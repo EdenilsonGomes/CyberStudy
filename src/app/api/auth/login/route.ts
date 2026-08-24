@@ -8,9 +8,9 @@ export async function POST(request: Request) {
   const expectedEmail = (process.env.ADMIN_EMAIL || "").trim().toLowerCase();
   const expectedPassword = process.env.ADMIN_PASSWORD || "";
   if (!expectedEmail || !expectedPassword || !safeEqual(email, expectedEmail) || !safeEqual(password, expectedPassword)) {
-    return redirectTo("/login?error=1");
+    return redirectTo(request, "/login?error=1");
   }
-  const response = redirectTo("/dashboard");
+  const response = redirectTo(request, "/dashboard");
   response.cookies.set(SESSION_COOKIE, createSession(email), sessionCookieOptions);
   return response;
 }
