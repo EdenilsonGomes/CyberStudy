@@ -1,5 +1,4 @@
 import { NextResponse } from "next/server";
-import { PDFParse } from "pdf-parse";
 import { getDb } from "@/db";
 import { materialChunks, materials } from "@/db/schema";
 import { chunkText } from "@/lib/data";
@@ -24,6 +23,7 @@ export async function POST(request: Request) {
       if (file.type !== "application/pdf") throw new Error("Envie somente arquivos PDF");
       const bytes = new Uint8Array(await file.arrayBuffer());
       if (new TextDecoder().decode(bytes.slice(0, 5)) !== "%PDF-") throw new Error("Arquivo PDF inválido");
+      const { PDFParse } = await import("pdf-parse");
       const parser = new PDFParse({ data: bytes });
       try { content = (await parser.getText()).text.trim(); } finally { await parser.destroy(); }
       type = "PDF";

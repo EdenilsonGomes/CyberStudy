@@ -4,7 +4,7 @@ import { fileURLToPath } from "node:url";
 import { dirname, join } from "node:path";
 
 if (!process.env.DATABASE_URL) throw new Error("DATABASE_URL não configurada");
-const sql = postgres(process.env.DATABASE_URL, { max: 1 });
+const sql = postgres(process.env.DATABASE_URL, { max: 1, onnotice: () => {} });
 const root = dirname(dirname(fileURLToPath(import.meta.url)));
 try {
   await sql`create table if not exists _cyberstudy_migrations (name text primary key, applied_at timestamptz not null default now())`;
