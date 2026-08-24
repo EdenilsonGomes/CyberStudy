@@ -4,8 +4,8 @@ import { and, desc, eq, sql } from "drizzle-orm";
 import { redirect } from "next/navigation";
 import { revalidatePath } from "next/cache";
 import { getDb } from "@/db";
-import { difficulties, disciplines, examTopics, exams, quizAttempts, quizQuestions, quizzes, reviews, studySessions, topics, tutorMessages } from "@/db/schema";
-import { evaluateUnderstanding, generateQuizQuestions, tutorReply } from "@/lib/ai";
+import { difficulties, disciplines, examTopics, exams, materials, quizAttempts, quizQuestions, quizzes, reviews, studySessions, topics, tutorMessages } from "@/db/schema";
+import { evaluateUnderstanding, generateQuizQuestions, suggestTopicsFromMaterial, tutorReply, type GeneratedQuestion } from "@/lib/ai";
 import { findContext } from "@/lib/data";
 import { requireAuth } from "@/lib/auth";
 
@@ -40,7 +40,9 @@ export async function createDifficulty(form: FormData) {
   await db.insert(tutorMessages).values({ difficultyId, role: "USER", mode, content: report });
   const [subject] = await db.select({ discipline: disciplines.name, topic: topics.name }).from(topics).innerJoin(disciplines, eq(topics.disciplineId, disciplines.id)).where(eq(topics.id, topicId)).limit(1);
   const context = await findContext(disciplineId, topicId, report);
-  const reply = await tutorReply({ mode, discipline: subject?.discipline || "Disciplina", topic: subject?.topic || "Tópico", report, context });
+  let reply: string;
+  try { reply = await tutorReply({ mode, discipline: subject?.discipline || "Disciplina", topic: subject?.topic || "Tópico", report, context }); }
+  catch { redirect("/estudar?erro=tutor"); }
   await db.insert(tutorMessages).values({ difficultyId, role: "ASSISTANT", mode, content: reply });
   await db.insert(studySessions).values({ disciplineId, topicId, activityType: "DIFICULDADE", result: level, note: report });
   redirect(`/estudar?dificuldade=${difficultyId}`);
@@ -53,7 +55,9 @@ export async function continueTutor(form: FormData) {
   const history = await db.select().from(tutorMessages).where(eq(tutorMessages.difficultyId, difficultyId)).orderBy(desc(tutorMessages.createdAt)).limit(6);
   await db.insert(tutorMessages).values({ difficultyId, role: "USER", mode, content: report });
   const context = await findContext(item.difficulty.disciplineId, item.difficulty.topicId, report);
-  const reply = await tutorReply({ mode, discipline: item.discipline, topic: item.topic, report, context, recentMessages: history.reverse().map((m) => `${m.role}: ${m.content}`) });
+  let reply: string;
+  try { reply = await tutorReply({ mode, discipline: item.discipline, topic: item.topic, report, context, recentMessages: history.reverse().map((m) => `${m.role}: ${m.content}`) }); }
+  catch { redirect(`/estudar?dificuldade=${difficultyId}&erro=tutor`); }
   await db.insert(tutorMessages).values({ difficultyId, role: "ASSISTANT", mode, content: reply });
   await db.update(difficulties).set({ lastReport: report, occurrences: sql`${difficulties.occurrences} + 1`, updatedAt: new Date() }).where(eq(difficulties.id, difficultyId));
   redirect(`/estudar?dificuldade=${difficultyId}`);
@@ -68,7 +72,9 @@ export async function generateQuiz(form: FormData) {
   const [subject] = await db.select({ discipline: disciplines.name, topic: topics.name }).from(topics).innerJoin(disciplines, eq(topics.disciplineId, disciplines.id)).where(eq(topics.id, topicId)).limit(1);
   if (!subject) throw new Error("Tópico não encontrado");
   const context = await findContext(disciplineId, topicId, subject.topic);
-  const generated = await generateQuizQuestions({ ...subject, count, context });
+  let generated: GeneratedQuestion[];
+  try { generated = await generateQuizQuestions({ ...subject, count, context }); }
+  catch { redirect("/estudar?erro=quiz"); }
   if (!generated.length) throw new Error("Não foi possível gerar questões válidas");
   const [quiz] = await db.insert(quizzes).values({ disciplineId, topicId, title: `Quiz: ${subject.topic}`, questionCount: generated.length }).returning({ id: quizzes.id });
   await db.insert(quizQuestions).values(generated.map((q) => ({ quizId: quiz.id, topicId, ...q })));
@@ -88,7 +94,9 @@ export async function submitQuiz(form: FormData) {
 export async function testUnderstanding(form: FormData) {
   await requireAuth(); const db = getDb(); const disciplineId = requireValue(form, "disciplineId"); const topicId = requireValue(form, "topicId"); const question = requireValue(form, "question").slice(0, 1000); const answer = requireValue(form, "answer").slice(0, 3000);
   const [subject] = await db.select({ discipline: disciplines.name, topic: topics.name }).from(topics).innerJoin(disciplines, eq(topics.disciplineId, disciplines.id)).where(eq(topics.id, topicId)).limit(1); if (!subject) throw new Error("Tópico não encontrado");
-  const context = await findContext(disciplineId, topicId, `${question} ${answer}`); const result = await evaluateUnderstanding({ mode: "ME_TESTAR", ...subject, report: question, answer, context });
+  const context = await findContext(disciplineId, topicId, `${question} ${answer}`); let result: string;
+  try { result = await evaluateUnderstanding({ mode: "ME_TESTAR", ...subject, report: question, answer, context }); }
+  catch { redirect("/estudar?erro=entendimento"); }
   const [session] = await db.insert(studySessions).values({ disciplineId, topicId, activityType: "TESTE_ENTENDIMENTO", result: result.split(/[.\n]/)[0].slice(0, 80), note: `${question}\n\nSua resposta: ${answer}\n\nAvaliação: ${result}` }).returning({ id: studySessions.id });
   redirect(`/estudar?entendimento=${session.id}`);
 }
@@ -106,4 +114,34 @@ export async function rescheduleReview(form: FormData) { await requireAuth(); co
 
 export async function createExam(form: FormData) {
   await requireAuth(); const db = getDb(); const disciplineId = requireValue(form, "disciplineId"); const [exam] = await db.insert(exams).values({ disciplineId, name: requireValue(form, "name").slice(0, 140), examDate: requireValue(form, "examDate"), notes: value(form, "notes").slice(0, 1000) || null }).returning({ id: exams.id }); const topicIds = form.getAll("topicIds").map(String).filter(Boolean); if (topicIds.length) await db.insert(examTopics).values(topicIds.map((topicId) => ({ examId: exam.id, topicId }))); redirect(`/provas/${exam.id}`);
+}
+
+export async function organizeMaterial(form: FormData) {
+  await requireAuth();
+  const db = getDb();
+  const materialId = requireValue(form, "materialId");
+  const [row] = await db.select({ material: materials, discipline: disciplines.name }).from(materials).innerJoin(disciplines, eq(materials.disciplineId, disciplines.id)).where(eq(materials.id, materialId)).limit(1);
+  if (!row) throw new Error("Material não encontrado");
+  const suggestions = await suggestTopicsFromMaterial({ discipline: row.discipline, title: row.material.title, content: row.material.content });
+  const existing = await db.select({ name: topics.name }).from(topics).where(eq(topics.disciplineId, row.material.disciplineId));
+  const normalize = (name: string) => name.toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "").trim();
+  const names = new Set(existing.map((topic) => normalize(topic.name)));
+  const fresh = suggestions.filter((topic) => {
+    const key = normalize(topic.name);
+    if (!key || names.has(key)) return false;
+    names.add(key);
+    return true;
+  });
+  if (fresh.length) await db.insert(topics).values(fresh.map((topic) => ({ disciplineId: row.material.disciplineId, name: topic.name, description: topic.description || null })));
+  redirect(`/disciplinas/${row.material.disciplineId}?topicos=${fresh.length}`);
+}
+
+export async function deleteMaterial(form: FormData) {
+  await requireAuth();
+  const db = getDb();
+  const materialId = requireValue(form, "materialId");
+  const [material] = await db.select({ disciplineId: materials.disciplineId }).from(materials).where(eq(materials.id, materialId)).limit(1);
+  if (!material) return;
+  await db.delete(materials).where(eq(materials.id, materialId));
+  redirect(`/disciplinas/${material.disciplineId}?material=excluido`);
 }

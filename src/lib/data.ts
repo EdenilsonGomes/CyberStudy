@@ -1,4 +1,4 @@
-import { and, asc, desc, eq } from "drizzle-orm";
+import { and, asc, desc, eq, isNull, or } from "drizzle-orm";
 import { getDb } from "@/db";
 import { materialChunks } from "@/db/schema";
 
@@ -9,7 +9,7 @@ function words(value: string) {
 export async function findContext(disciplineId: string, topicId: string | null, query: string) {
   const db = getDb();
   const chunks = await db.select().from(materialChunks)
-    .where(topicId ? and(eq(materialChunks.disciplineId, disciplineId), eq(materialChunks.topicId, topicId)) : eq(materialChunks.disciplineId, disciplineId))
+    .where(topicId ? and(eq(materialChunks.disciplineId, disciplineId), or(eq(materialChunks.topicId, topicId), isNull(materialChunks.topicId))) : eq(materialChunks.disciplineId, disciplineId))
     .orderBy(asc(materialChunks.position)).limit(40);
   const terms = words(query);
   return chunks
