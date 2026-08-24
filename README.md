@@ -1,6 +1,6 @@
 # CyberStudy
 
-Aplicação pessoal para transformar conteúdos de Segurança da Informação em estudo ativo: registrar dúvidas com as próprias palavras, conversar com um tutor, gerar quizzes, acompanhar assuntos fracos, programar revisões e montar um plano SOS para provas.
+Aplicação pessoal para transformar conteúdos de Segurança da Informação em trilhas de microaulas: aprender um conceito por vez, praticar, revisar erros, usar um tutor contextual e montar um plano SOS para provas.
 
 ## Stack
 
@@ -8,7 +8,7 @@ Aplicação pessoal para transformar conteúdos de Segurança da Informação em
 - Tailwind CSS
 - PostgreSQL com Drizzle ORM
 - OpenAI Responses API
-- Mistral API opcional para organizar materiais em tópicos
+- Mistral API opcional para transformar materiais em trilhas de microaulas
 - Docker (um único container da aplicação)
 
 ## Rodar localmente
@@ -29,7 +29,7 @@ O login usa `ADMIN_EMAIL` e `ADMIN_PASSWORD`. Não existe cadastro público nest
 | `DATABASE_URL` | sim | Conexão PostgreSQL |
 | `OPENAI_API_KEY` | para IA | Tutor, quiz e teste de entendimento |
 | `OPENAI_MODEL` | não | Modelo configurável; padrão `gpt-5-mini` |
-| `MISTRAL_API_KEY` | não | Alternativa para organizar materiais em tópicos |
+| `MISTRAL_API_KEY` | não | Alternativa para gerar trilhas a partir de materiais |
 | `MISTRAL_MODEL` | não | Modelo Mistral; padrão `mistral-small-latest` |
 | `ADMIN_EMAIL` | sim | Login único da V0 |
 | `ADMIN_PASSWORD` | sim | Login e assinatura da sessão quando `AUTH_SECRET` não existe |
@@ -42,7 +42,7 @@ Para trocar o modelo principal, altere somente `OPENAI_MODEL`. Se a OpenAI não 
 
 ## Banco e migrations
 
-O schema está em `src/db/schema.ts`. A migration inicial fica em `migrations/0000_initial.sql`.
+O schema está em `src/db/schema.ts`. As migrations versionadas ficam em `migrations/` e são aplicadas em ordem.
 
 ```sh
 pnpm db:migrate

@@ -9,6 +9,21 @@ import {
   uuid,
 } from "drizzle-orm/pg-core";
 
+export type LessonCheck = {
+  id: string;
+  type: "MULTIPLE_CHOICE" | "TRUE_FALSE" | "FILL_BLANK" | "ORDER";
+  prompt: string;
+  options: string[];
+  correctAnswer: string;
+  explanation: string;
+};
+
+export type LessonContent = {
+  explanation: string;
+  example: string;
+  checks: LessonCheck[];
+};
+
 const timestamps = {
   createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
   updatedAt: timestamp("updated_at", { withTimezone: true }).defaultNow().notNull(),
@@ -32,6 +47,38 @@ export const topics = pgTable("topics", {
   status: text("status").default("NAO_ESTUDADO").notNull(),
   mastery: integer("mastery").default(0).notNull(),
   ...timestamps,
+});
+
+export const learningUnits = pgTable("learning_units", {
+  id: uuid("id").defaultRandom().primaryKey(),
+  disciplineId: uuid("discipline_id").references(() => disciplines.id, { onDelete: "cascade" }).notNull(),
+  materialId: uuid("material_id").references(() => materials.id, { onDelete: "set null" }),
+  title: text("title").notNull(),
+  description: text("description"),
+  position: integer("position").notNull(),
+  createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
+});
+
+export const microLessons = pgTable("micro_lessons", {
+  id: uuid("id").defaultRandom().primaryKey(),
+  unitId: uuid("unit_id").references(() => learningUnits.id, { onDelete: "cascade" }).notNull(),
+  disciplineId: uuid("discipline_id").references(() => disciplines.id, { onDelete: "cascade" }).notNull(),
+  topicId: uuid("topic_id").references(() => topics.id, { onDelete: "set null" }),
+  title: text("title").notNull(),
+  objective: text("objective").notNull(),
+  position: integer("position").notNull(),
+  content: jsonb("content").$type<LessonContent>().notNull(),
+  createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
+});
+
+export const lessonAttempts = pgTable("lesson_attempts", {
+  id: uuid("id").defaultRandom().primaryKey(),
+  lessonId: uuid("lesson_id").references(() => microLessons.id, { onDelete: "cascade" }).notNull(),
+  score: integer("score").notNull(),
+  correctCount: integer("correct_count").notNull(),
+  total: integer("total").notNull(),
+  answers: jsonb("answers").$type<Record<string, string>>().notNull(),
+  createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
 });
 
 export const materials = pgTable("materials", {

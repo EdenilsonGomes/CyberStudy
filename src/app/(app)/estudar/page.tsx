@@ -2,7 +2,7 @@ import Link from "next/link";
 import { BookOpenCheck, Brain, Check, CheckCircle2, Flame, FlaskConical, MessageCircleQuestion, Play, RotateCcw, Sparkles } from "lucide-react";
 import { and, asc, desc, eq } from "drizzle-orm";
 import { getDb } from "@/db";
-import { difficulties, disciplines, quizAttempts, quizQuestions, quizzes, reviews, studySessions, topics, tutorMessages } from "@/db/schema";
+import { difficulties, disciplines, lessonAttempts, microLessons, quizAttempts, quizQuestions, quizzes, reviews, studySessions, topics, tutorMessages } from "@/db/schema";
 import { createDifficulty, generateQuiz, startGuidedSession, submitQuiz, testUnderstanding } from "@/app/actions";
 import { SubmitButton } from "@/components/submit-button";
 import { TutorChat } from "@/components/tutor-chat";
@@ -13,9 +13,11 @@ type StudyQuery = { topico?: string; dificuldade?: string; quiz?: string; tentat
 export default async function StudyPage({ searchParams }: { searchParams: Promise<StudyQuery> }) {
   const query = await searchParams;
   const db = getDb();
-  const [disciplineRows, topicRows] = await Promise.all([
+  const [disciplineRows, topicRows, lessonRows, lessonAttemptRows] = await Promise.all([
     db.select().from(disciplines).where(eq(disciplines.status, "ATIVA")),
     db.select().from(topics).orderBy(asc(topics.createdAt)),
+    db.select().from(microLessons).orderBy(asc(microLessons.createdAt)),
+    db.select({ lessonId: lessonAttempts.lessonId, score: lessonAttempts.score }).from(lessonAttempts).orderBy(desc(lessonAttempts.createdAt)),
   ]);
   let activeDifficulty: typeof difficulties.$inferSelect | undefined;
   let messages: typeof tutorMessages.$inferSelect[] = [];
@@ -38,6 +40,8 @@ export default async function StudyPage({ searchParams }: { searchParams: Promis
   const selectedTopic = topicRows.find((topic) => topic.id === selectedTopicId) ?? pickNextTopic(topicRows);
   const selectedDisciplineId = selectedTopic?.disciplineId || activeDifficulty?.disciplineId || activeQuiz?.disciplineId || disciplineRows[0]?.id || "";
   const selectedDiscipline = disciplineRows.find((discipline) => discipline.id === selectedDisciplineId);
+  const completedLessonIds = new Set(lessonAttemptRows.filter((item) => item.score >= 60).map((item) => item.lessonId));
+  const selectedLesson = lessonRows.find((lesson) => lesson.topicId === selectedTopic?.id && !completedLessonIds.has(lesson.id)) ?? lessonRows.find((lesson) => !completedLessonIds.has(lesson.id));
   let nextReview: typeof reviews.$inferSelect | undefined;
   let rhythm = { streak: 0, completedToday: false };
   if (attempt) {
@@ -50,7 +54,7 @@ export default async function StudyPage({ searchParams }: { searchParams: Promis
   }
 
   return <div className="mx-auto max-w-5xl space-y-6">
-    <header><p className="muted text-sm">Sessões curtas, progresso real</p><h1 className="page-title">Estudar agora</h1></header>
+    <header><p className="muted text-sm">Sessões curtas, progresso real</p><h1 className="page-title">{activeDifficulty ? "Tutor avançado" : "Estudar agora"}</h1></header>
     {query.erro && <p className="rounded-xl border p-4 text-sm" style={{ borderColor: "var(--danger)", color: "var(--danger)" }}>Não foi possível concluir esta ação. Verifique a configuração da IA e tente novamente.</p>}
 
     {query.sessao === "1" && selectedTopic && !activeDifficulty && !activeQuiz && <section className="card overflow-hidden">
@@ -89,8 +93,8 @@ export default async function StudyPage({ searchParams }: { searchParams: Promis
     {understanding && <section className="card p-6"><h2 className="section-title mb-4 flex items-center gap-2"><CheckCircle2 size={20}/>Avaliação de entendimento</h2><p className="whitespace-pre-wrap text-sm leading-7">{understanding.note}</p><Link className="btn btn-primary mt-5" href="/dashboard">Voltar ao início</Link></section>}
 
     {!activeDifficulty && !activeQuiz && !understanding && query.sessao !== "1" && <>
-      {selectedTopic ? <section className="card p-5 md:p-7"><p className="muted text-sm">Próximo assunto · {selectedDiscipline?.name}</p><h2 className="mt-1 text-2xl font-extrabold">{selectedTopic.name}</h2><p className="muted mt-2 text-sm">Siga uma sessão curta, com um passo de cada vez.</p><Link className="btn btn-primary mt-5 w-full md:w-auto" href={`/estudar?topico=${selectedTopic.id}&sessao=1`}><Play size={18} fill="currentColor"/> Começar sessão guiada</Link></section> : <div className="empty">Adicione um tópico em uma disciplina para começar.</div>}
-      <details className="card p-5"><summary className="cursor-pointer font-extrabold">Outras formas de estudar</summary><div className="mt-6 grid gap-6 lg:grid-cols-2">
+      {selectedLesson ? <section className="card p-5 md:p-7"><p className="muted text-sm">Próxima microaula · {disciplineRows.find((discipline) => discipline.id === selectedLesson.disciplineId)?.name}</p><h2 className="mt-1 text-2xl font-extrabold">{selectedLesson.title}</h2><p className="muted mt-2 text-sm">{selectedLesson.objective}</p><Link className="btn btn-primary mt-5 w-full md:w-auto" href={`/aulas/${selectedLesson.id}`}><Play size={18} fill="currentColor"/> Começar microaula</Link></section> : selectedTopic ? <section className="card p-5 md:p-7"><p className="muted text-sm">Próximo assunto · {selectedDiscipline?.name}</p><h2 className="mt-1 text-2xl font-extrabold">{selectedTopic.name}</h2><p className="muted mt-2 text-sm">Ainda não há microaula pronta para este tópico.</p><Link className="btn btn-primary mt-5 w-full md:w-auto" href={`/estudar?topico=${selectedTopic.id}&sessao=1`}><Play size={18} fill="currentColor"/> Usar tutor guiado</Link></section> : <div className="empty">Adicione um material em uma disciplina para começar.</div>}
+      <details className="card p-5"><summary className="cursor-pointer font-extrabold">Tutor avançado e outras ferramentas</summary><div className="mt-6 grid gap-6 lg:grid-cols-2">
         <section><h3 className="mb-2 flex items-center gap-2 font-extrabold"><MessageCircleQuestion size={19}/>Estou com dificuldade</h3><p className="muted mb-4 text-sm">Conte com suas palavras onde travou.</p><form action={createDifficulty} className="space-y-4"><SubjectFields disciplines={disciplineRows} topics={topicRows} disciplineId={selectedDisciplineId} topicId={selectedTopic?.id || ""}/><textarea className="field min-h-28" name="report" required maxLength={2500} placeholder="Estou confundindo..."/><input type="hidden" name="level" value="NAO_ENTENDI"/><input type="hidden" name="mode" value="DIAGNOSTICAR"/><SubmitButton pendingText="Analisando..." className="btn btn-secondary w-full"><Brain size={17}/>Diagnosticar dificuldade</SubmitButton></form></section>
         <section><h3 className="mb-2 flex items-center gap-2 font-extrabold"><BookOpenCheck size={19}/>Testar minha explicação</h3><p className="muted mb-4 text-sm">Explique sem consultar e receba uma avaliação curta.</p><form action={testUnderstanding} className="space-y-4"><SubjectFields disciplines={disciplineRows} topics={topicRows} disciplineId={selectedDisciplineId} topicId={selectedTopic?.id || ""}/><input className="field" name="question" required placeholder="O que este conceito significa?"/><textarea className="field min-h-24" name="answer" required placeholder="Explique com suas palavras..."/><SubmitButton pendingText="Avaliando..." className="btn btn-secondary w-full"><Sparkles size={17}/>Avaliar entendimento</SubmitButton></form></section>
       </div></details>

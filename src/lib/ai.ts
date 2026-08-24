@@ -123,9 +123,9 @@ function cleanSuggestedTopics(value: unknown): SuggestedTopic[] {
   }).slice(0, 10);
 }
 
-async function callMistralForTopics(system: string, prompt: string) {
+async function callMistralForTopics(system: string, prompt: string, maxTokens = 1200) {
   const controller = new AbortController();
-  const timeout = setTimeout(() => controller.abort(), 30_000);
+  const timeout = setTimeout(() => controller.abort(), maxTokens > 1200 ? 60_000 : 30_000);
   try {
     const response = await fetch("https://api.mistral.ai/v1/chat/completions", {
       method: "POST",
@@ -135,7 +135,7 @@ async function callMistralForTopics(system: string, prompt: string) {
         messages: [{ role: "system", content: system }, { role: "user", content: prompt }],
         response_format: { type: "json_object" },
         temperature: 0.1,
-        max_tokens: 1200,
+        max_tokens: maxTokens,
       }),
       signal: controller.signal,
     });
@@ -146,6 +146,66 @@ async function callMistralForTopics(system: string, prompt: string) {
     return content;
   } finally {
     clearTimeout(timeout);
+  }
+}
+
+export type GeneratedLesson = {
+  title: string;
+  objective: string;
+  explanation: string;
+  example: string;
+  checks: Array<{
+    type: "MULTIPLE_CHOICE" | "TRUE_FALSE" | "FILL_BLANK" | "ORDER";
+    prompt: string;
+    options: string[];
+    correctAnswer: string;
+    explanation: string;
+  }>;
+};
+
+export type GeneratedUnit = { title: string; description: string; lessons: GeneratedLesson[] };
+
+function cleanCourse(value: unknown): GeneratedUnit[] {
+  if (!value || typeof value !== "object" || !("units" in value) || !Array.isArray(value.units)) return [];
+  const validTypes = new Set(["MULTIPLE_CHOICE", "TRUE_FALSE", "FILL_BLANK", "ORDER"]);
+  return value.units.slice(0, 4).flatMap((rawUnit: unknown) => {
+    if (!rawUnit || typeof rawUnit !== "object" || !("title" in rawUnit) || typeof rawUnit.title !== "string" || !("lessons" in rawUnit) || !Array.isArray(rawUnit.lessons)) return [];
+    const lessons = rawUnit.lessons.slice(0, 4).flatMap((rawLesson: unknown) => {
+      if (!rawLesson || typeof rawLesson !== "object") return [];
+      const lesson = rawLesson as Record<string, unknown>;
+      if (typeof lesson.title !== "string" || typeof lesson.objective !== "string" || typeof lesson.explanation !== "string" || typeof lesson.example !== "string" || !Array.isArray(lesson.checks)) return [];
+      const checks = lesson.checks.slice(0, 4).flatMap((rawCheck) => {
+        if (!rawCheck || typeof rawCheck !== "object") return [];
+        const check = rawCheck as Record<string, unknown>;
+        if (typeof check.type !== "string" || !validTypes.has(check.type) || typeof check.prompt !== "string" || typeof check.correctAnswer !== "string" || typeof check.explanation !== "string") return [];
+        const options = Array.isArray(check.options) ? check.options.filter((option): option is string => typeof option === "string").slice(0, 5) : [];
+        if (check.type !== "FILL_BLANK" && !options.includes(check.correctAnswer)) return [];
+        return [{ type: check.type as GeneratedLesson["checks"][number]["type"], prompt: check.prompt.slice(0, 500), options, correctAnswer: check.correctAnswer.slice(0, 240), explanation: check.explanation.slice(0, 500) }];
+      });
+      if (checks.length < 2) return [];
+      return [{ title: lesson.title.slice(0, 140), objective: lesson.objective.slice(0, 300), explanation: lesson.explanation.slice(0, 900), example: lesson.example.slice(0, 900), checks }];
+    });
+    if (!lessons.length) return [];
+    const description = "description" in rawUnit && typeof rawUnit.description === "string" ? rawUnit.description.slice(0, 400) : "";
+    return [{ title: rawUnit.title.slice(0, 140), description, lessons }];
+  });
+}
+
+export async function generateCourseFromMaterial(input: { discipline: string; title: string; content: string }) {
+  if (!process.env.OPENAI_API_KEY && !process.env.MISTRAL_API_KEY) throw new Error("AI_NOT_CONFIGURED");
+  const normalized = input.content.replace(/\s+/g, " ");
+  const middle = Math.floor(normalized.length / 2);
+  const sample = [normalized.slice(0, 7000), normalized.slice(Math.max(0, middle - 2500), middle + 2500), normalized.slice(-4000)].join("\n---\n");
+  const system = `Você é um designer instrucional. Transforme material acadêmico em uma trilha curta para iniciante e retorne somente JSON válido. Não invente conteúdo. Ordene pré-requisitos antes de aplicações. Cada microaula deve ensinar um único conceito, em português simples, e durar poucos minutos. Gere entre 2 e 4 unidades, com 2 a 4 microaulas por unidade. Cada microaula deve ter explicação curta, exemplo passo a passo e 2 a 4 verificações. Distribua os tipos MULTIPLE_CHOICE, TRUE_FALSE, FILL_BLANK e ORDER. Para ORDER, ofereça sequências completas como opções. Para FILL_BLANK, options deve ser []. Para os demais, correctAnswer deve ser idêntica a uma opção.`;
+  const prompt = `Disciplina: ${input.discipline}\nMaterial: ${input.title}\nTrechos do material:\n${sample}\n\nFormato obrigatório: {"units":[{"title":"...","description":"...","lessons":[{"title":"...","objective":"...","explanation":"...","example":"...","checks":[{"type":"MULTIPLE_CHOICE","prompt":"...","options":["..."],"correctAnswer":"...","explanation":"..."}]}]}]}`;
+  try {
+    const raw = process.env.MISTRAL_API_KEY ? await callMistralForTopics(system, prompt, 5000) : await callAI(system, prompt, 5000);
+    const parsed = JSON.parse(raw.replace(/^```json\s*/i, "").replace(/```$/i, "").trim()) as unknown;
+    const units = cleanCourse(parsed);
+    if (!units.length || units.reduce((total, unit) => total + unit.lessons.length, 0) < 3) throw new Error("INVALID_COURSE");
+    return units;
+  } catch {
+    throw new Error("COURSE_GENERATION_FAILED");
   }
 }
 

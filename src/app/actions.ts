@@ -4,8 +4,8 @@ import { and, desc, eq, sql } from "drizzle-orm";
 import { redirect } from "next/navigation";
 import { revalidatePath } from "next/cache";
 import { getDb } from "@/db";
-import { difficulties, disciplines, examTopics, exams, materials, quizAttempts, quizQuestions, quizzes, reviews, studySessions, topics, tutorMessages } from "@/db/schema";
-import { evaluateUnderstanding, generateQuizQuestions, suggestTopicsFromMaterial, tutorReply, type GeneratedQuestion } from "@/lib/ai";
+import { difficulties, disciplines, examTopics, exams, learningUnits, lessonAttempts, materials, microLessons, quizAttempts, quizQuestions, quizzes, reviews, studySessions, topics, tutorMessages } from "@/db/schema";
+import { evaluateUnderstanding, generateCourseFromMaterial, generateQuizQuestions, suggestTopicsFromMaterial, tutorReply, type GeneratedQuestion } from "@/lib/ai";
 import { findContext } from "@/lib/data";
 import { requireAuth } from "@/lib/auth";
 
@@ -199,6 +199,72 @@ export async function organizeMaterial(form: FormData) {
   });
   if (fresh.length) await db.insert(topics).values(fresh.map((topic) => ({ disciplineId: row.material.disciplineId, name: topic.name, description: topic.description || null })));
   redirect(`/disciplinas/${row.material.disciplineId}?topicos=${fresh.length}`);
+}
+
+export async function createLearningPath(form: FormData) {
+  await requireAuth();
+  const db = getDb();
+  const materialId = requireValue(form, "materialId");
+  const [row] = await db.select({ material: materials, discipline: disciplines.name }).from(materials).innerJoin(disciplines, eq(materials.disciplineId, disciplines.id)).where(eq(materials.id, materialId)).limit(1);
+  if (!row) throw new Error("Material não encontrado");
+  let generated: Awaited<ReturnType<typeof generateCourseFromMaterial>>;
+  try { generated = await generateCourseFromMaterial({ discipline: row.discipline, title: row.material.title, content: row.material.content }); }
+  catch (error) {
+    const reason = error instanceof Error && error.message === "AI_NOT_CONFIGURED" ? "sem_ia" : "erro";
+    redirect(`/disciplinas/${row.material.disciplineId}?trilha=${reason}`);
+  }
+  const existingTopics = await db.select().from(topics).where(eq(topics.disciplineId, row.material.disciplineId));
+  const normalize = (name: string) => name.toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "").trim();
+  const byName = new Map(existingTopics.map((topic) => [normalize(topic.name), topic]));
+  await db.transaction(async (tx) => {
+    await tx.delete(learningUnits).where(eq(learningUnits.materialId, materialId));
+    for (const [unitPosition, unit] of generated.entries()) {
+      const [createdUnit] = await tx.insert(learningUnits).values({ disciplineId: row.material.disciplineId, materialId, title: unit.title, description: unit.description || null, position: unitPosition }).returning({ id: learningUnits.id });
+      for (const [lessonPosition, lesson] of unit.lessons.entries()) {
+        let topic = byName.get(normalize(lesson.title));
+        if (!topic) {
+          const [createdTopic] = await tx.insert(topics).values({ disciplineId: row.material.disciplineId, name: lesson.title, description: lesson.objective }).returning();
+          topic = createdTopic;
+          byName.set(normalize(lesson.title), topic);
+        }
+        await tx.insert(microLessons).values({ unitId: createdUnit.id, disciplineId: row.material.disciplineId, topicId: topic.id, title: lesson.title, objective: lesson.objective, position: lessonPosition, content: { explanation: lesson.explanation, example: lesson.example, checks: lesson.checks.map((check, index) => ({ ...check, id: `q${index + 1}` })) } });
+      }
+    }
+  });
+  redirect(`/disciplinas/${row.material.disciplineId}?trilha=${generated.reduce((total, unit) => total + unit.lessons.length, 0)}`);
+}
+
+export async function completeMicroLesson(form: FormData) {
+  await requireAuth();
+  const db = getDb();
+  const lessonId = requireValue(form, "lessonId");
+  const [lesson] = await db.select().from(microLessons).where(eq(microLessons.id, lessonId)).limit(1);
+  if (!lesson) throw new Error("Microaula não encontrada");
+  const normalize = (answer: string) => answer.toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "").replace(/\s+/g, " ").trim();
+  const answers: Record<string, string> = {};
+  let correct = 0;
+  for (const check of lesson.content.checks) {
+    const answer = value(form, `answer_${check.id}`);
+    answers[check.id] = answer;
+    if (normalize(answer) === normalize(check.correctAnswer)) correct++;
+  }
+  const total = lesson.content.checks.length;
+  const score = Math.round((correct / Math.max(total, 1)) * 100);
+  const [attempt] = await db.insert(lessonAttempts).values({ lessonId, score, correctCount: correct, total, answers }).returning({ id: lessonAttempts.id });
+  if (lesson.topicId) {
+    const [topic] = await db.select().from(topics).where(eq(topics.id, lesson.topicId)).limit(1);
+    const mastery = Math.round((topic?.mastery || 0) * .45 + score * .55);
+    const status = score >= 70 ? "DOMINADO" : score >= 50 ? "REVISAR" : "ESTUDANDO";
+    await db.update(topics).set({ mastery, status, updatedAt: new Date() }).where(eq(topics.id, lesson.topicId));
+    const [pending] = await db.select({ id: reviews.id }).from(reviews).where(and(eq(reviews.topicId, lesson.topicId), eq(reviews.status, "PENDENTE"))).limit(1);
+    if (!pending) {
+      const target = new Date();
+      target.setDate(target.getDate() + (score < 50 ? 1 : score < 80 ? 3 : 7));
+      await db.insert(reviews).values({ disciplineId: lesson.disciplineId, topicId: lesson.topicId, scheduledFor: target.toISOString().slice(0, 10) });
+    }
+  }
+  await db.insert(studySessions).values({ disciplineId: lesson.disciplineId, topicId: lesson.topicId, activityType: "ESTUDO", durationMinutes: 8, result: `${score}%`, note: `Microaula: ${lesson.title} · ${correct}/${total} acertos` });
+  redirect(`/aulas/${lessonId}?tentativa=${attempt.id}`);
 }
 
 export async function deleteMaterial(form: FormData) {
