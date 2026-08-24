@@ -3,6 +3,7 @@ import { getDb } from "@/db";
 import { materialChunks, materials } from "@/db/schema";
 import { chunkText } from "@/lib/data";
 import { requireAuth } from "@/lib/auth";
+import { redirectTo } from "@/lib/http";
 
 export const runtime = "nodejs";
 
@@ -33,7 +34,7 @@ export async function POST(request: Request) {
     const [material] = await db.insert(materials).values({ disciplineId, topicId, title, type, content }).returning({ id: materials.id });
     const chunks = chunkText(content).slice(0, 250);
     await db.insert(materialChunks).values(chunks.map((chunk, position) => ({ materialId: material.id, disciplineId, topicId, position, content: chunk })));
-    return NextResponse.redirect(new URL(`/disciplinas/${disciplineId}?material=ok`, request.url), 303);
+    return redirectTo(`/disciplinas/${disciplineId}?material=ok`);
   } catch (error) {
     const message = error instanceof Error ? error.message : "Falha ao processar material";
     return NextResponse.json({ error: message }, { status: 400 });
