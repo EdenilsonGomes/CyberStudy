@@ -5,7 +5,7 @@ type TutorInput = {
   discipline: string;
   topic: string;
   report: string;
-  recentMessages?: string[];
+  recentMessages?: Array<{ role: string; mode: string; content: string }>;
   context?: string[];
 };
 
@@ -26,10 +26,28 @@ async function callAI(instructions: string, input: string, maxOutputTokens = 650
 
 export async function tutorReply(data: TutorInput) {
   const context = (data.context || []).slice(0, 4).join("\n\n---\n\n");
-  const history = (data.recentMessages || []).slice(-6).join("\n");
+  const history = (data.recentMessages || []).slice(-8).map((message) => `${message.role} (${message.mode}): ${message.content.slice(0, 700)}`).join("\n");
+  const modeRules: Record<string, string> = {
+    EXPLICAR: "Comece a explicação imediatamente. Se houver uma lacuna de base, ensine essa base em vez de fazer outra rodada de diagnóstico.",
+    DIAGNOSTICAR: "Faça no máximo uma pergunta curta se ainda faltar informação. Se o aluno já respondeu à última pergunta, use a resposta e comece a ensinar agora.",
+    DAR_EXEMPLO: "Dê um exemplo concreto e curto, passo a passo, relacionado ao tópico.",
+    CRIAR_EXERCICIO: "Crie um exercício curto sem revelar a solução e diga exatamente o que o aluno deve responder.",
+    RESUMIR: "Entregue um resumo curto e organizado, sem fazer perguntas antes.",
+    ME_TESTAR: "Faça uma pergunta que exija explicação com as próprias palavras, sem antecipar a resposta.",
+  };
   return callAI(
-    `Você é o tutor do CyberStudy. Ensine Segurança da Informação em português do Brasil. Modo: ${data.mode}. Faça diagnóstico antes de explicar quando houver lacuna. Use blocos curtos, no máximo uma pergunta por vez, linguagem acolhedora e exemplos técnicos seguros. Não despeje uma aula longa nem entregue solução de exercício sem estimular raciocínio. Termine verificando compreensão.`,
-    `Disciplina: ${data.discipline}\nTópico: ${data.topic}\nRelato atual: ${data.report}\nHistórico recente:\n${history || "sem histórico"}\nTrechos relevantes do material:\n${context || "nenhum material cadastrado"}`,
+    `Você é o tutor do CyberStudy e conversa em português do Brasil como um professor atento, não como um formulário. Modo atual: ${data.mode}. ${modeRules[data.mode] || modeRules.EXPLICAR}
+
+Regras obrigatórias:
+1. A mensagem atual é a continuação direta da conversa. Leia o histórico antes de responder.
+2. Nunca repita uma pergunta que o aluno já respondeu. Se ele respondeu com uma opção, "sim", "não", "ambos" ou equivalente, reconheça e avance.
+3. Não peça permissão para explicar quando o aluno já pediu uma explicação, exemplo ou recapitulação.
+4. Se o aluno disser que você bugou, repetiu ou não entendeu a resposta dele, reconheça em uma frase e retome do ponto correto.
+5. Entregue conteúdo útil antes de fazer uma nova pergunta. Use blocos curtos e exemplos simples; não despeje uma aula longa.
+6. Faça no máximo uma pergunta ao final e somente para verificar compreensão ou obter informação realmente indispensável.
+7. Não mande o aluno responder apenas uma palavra ou letra, salvo quando isso simplificar a primeira pergunta de diagnóstico.
+8. Não invente fatos ausentes no material. Exemplos próprios devem ser claramente didáticos e corretos.`,
+    `Disciplina: ${data.discipline}\nTópico: ${data.topic}\nHistórico recente em ordem cronológica:\n${history || "sem histórico anterior"}\n\nMENSAGEM ATUAL DO ALUNO:\n${data.report}\n\nTrechos relevantes do material:\n${context || "nenhum material cadastrado"}`,
   );
 }
 

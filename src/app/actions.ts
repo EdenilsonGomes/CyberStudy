@@ -62,11 +62,11 @@ export async function continueTutor(form: FormData) {
   await requireAuth(); const db = getDb(); const difficultyId = requireValue(form, "difficultyId"); const report = requireValue(form, "message").slice(0, 2500); const mode = value(form, "mode") || "EXPLICAR";
   const [item] = await db.select({ difficulty: difficulties, discipline: disciplines.name, topic: topics.name }).from(difficulties).innerJoin(disciplines, eq(difficulties.disciplineId, disciplines.id)).innerJoin(topics, eq(difficulties.topicId, topics.id)).where(eq(difficulties.id, difficultyId)).limit(1);
   if (!item) throw new Error("Dificuldade não encontrada");
-  const history = await db.select().from(tutorMessages).where(eq(tutorMessages.difficultyId, difficultyId)).orderBy(desc(tutorMessages.createdAt)).limit(6);
+  const history = await db.select().from(tutorMessages).where(eq(tutorMessages.difficultyId, difficultyId)).orderBy(desc(tutorMessages.createdAt)).limit(8);
   await db.insert(tutorMessages).values({ difficultyId, role: "USER", mode, content: report });
   const context = await findContext(item.difficulty.disciplineId, item.difficulty.topicId, report);
   let reply: string;
-  try { reply = await tutorReply({ mode, discipline: item.discipline, topic: item.topic, report, context, recentMessages: history.reverse().map((m) => `${m.role}: ${m.content}`) }); }
+  try { reply = await tutorReply({ mode, discipline: item.discipline, topic: item.topic, report, context, recentMessages: history.reverse().map(({ role, mode: messageMode, content }) => ({ role, mode: messageMode, content })) }); }
   catch { redirect(`/estudar?dificuldade=${difficultyId}&erro=tutor`); }
   await db.insert(tutorMessages).values({ difficultyId, role: "ASSISTANT", mode, content: reply });
   await db.update(difficulties).set({ lastReport: report, occurrences: sql`${difficulties.occurrences} + 1`, updatedAt: new Date() }).where(eq(difficulties.id, difficultyId));
