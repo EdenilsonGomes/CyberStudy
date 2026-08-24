@@ -31,6 +31,16 @@ export async function updateTopicStatus(form: FormData) {
   await db.update(topics).set({ status, mastery, updatedAt: new Date() }).where(eq(topics.id, id)); revalidatePath("/disciplinas");
 }
 
+export async function deleteTopic(form: FormData) {
+  await requireAuth();
+  const db = getDb();
+  const topicId = requireValue(form, "topicId");
+  const [topic] = await db.select({ disciplineId: topics.disciplineId }).from(topics).where(eq(topics.id, topicId)).limit(1);
+  if (!topic) return;
+  await db.delete(topics).where(eq(topics.id, topicId));
+  redirect(`/disciplinas/${topic.disciplineId}?topico=excluido`);
+}
+
 export async function createDifficulty(form: FormData) {
   await requireAuth(); const db = getDb(); const disciplineId = requireValue(form, "disciplineId"); const topicId = requireValue(form, "topicId"); const report = requireValue(form, "report").slice(0, 2500); const level = value(form, "level") || "NAO_ENTENDI"; const mode = value(form, "mode") || "DIAGNOSTICAR";
   const [existing] = await db.select().from(difficulties).where(and(eq(difficulties.topicId, topicId), eq(difficulties.status, "ABERTA"))).limit(1);
@@ -122,7 +132,13 @@ export async function organizeMaterial(form: FormData) {
   const materialId = requireValue(form, "materialId");
   const [row] = await db.select({ material: materials, discipline: disciplines.name }).from(materials).innerJoin(disciplines, eq(materials.disciplineId, disciplines.id)).where(eq(materials.id, materialId)).limit(1);
   if (!row) throw new Error("Material não encontrado");
-  const suggestions = await suggestTopicsFromMaterial({ discipline: row.discipline, title: row.material.title, content: row.material.content });
+  let suggestions: Awaited<ReturnType<typeof suggestTopicsFromMaterial>>;
+  try {
+    suggestions = await suggestTopicsFromMaterial({ discipline: row.discipline, title: row.material.title, content: row.material.content });
+  } catch (error) {
+    const reason = error instanceof Error && error.message === "AI_NOT_CONFIGURED" ? "sem_ia" : "erro";
+    redirect(`/disciplinas/${row.material.disciplineId}?topicos=${reason}`);
+  }
   const existing = await db.select({ name: topics.name }).from(topics).where(eq(topics.disciplineId, row.material.disciplineId));
   const normalize = (name: string) => name.toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "").trim();
   const names = new Set(existing.map((topic) => normalize(topic.name)));

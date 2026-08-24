@@ -76,39 +76,65 @@ export async function evaluateUnderstanding(input: TutorInput & { answer: string
 
 export type SuggestedTopic = { name: string; description?: string };
 
-function headingCandidates(title: string, content: string): SuggestedTopic[] {
-  const lines = `${title}\n${content}`.split(/\r?\n/).map((line) => line.replace(/\s+/g, " ").trim());
+function cleanSuggestedTopics(value: unknown): SuggestedTopic[] {
+  if (!value || typeof value !== "object" || !("topics" in value) || !Array.isArray(value.topics)) return [];
   const seen = new Set<string>();
-  const result: SuggestedTopic[] = [];
-  for (const line of lines) {
-    const looksLikeHeading = /^(unidade|cap[ií]tulo|m[oó]dulo|aula|tema|se[cç][aã]o|\d+(?:\.\d+)*\s*[-–.:])/i.test(line) || (line.length >= 8 && line.length <= 90 && line === line.toUpperCase());
-    if (!looksLikeHeading || line.length > 120) continue;
-    const name = line.replace(/^(unidade|cap[ií]tulo|m[oó]dulo|aula|tema|se[cç][aã]o)\s*\d*\s*[-–.:]?\s*/i, "").trim();
+  return value.topics.flatMap((item) => {
+    if (!item || typeof item !== "object" || !("name" in item) || typeof item.name !== "string") return [];
+    const name = item.name.replace(/\s+/g, " ").replace(/^[\s\-–—:;,.]+|[\s\-–—:;,.]+$/g, "").trim();
+    const letters = (name.match(/[A-Za-zÀ-ÿ]/g) || []).length;
+    const digits = (name.match(/\d/g) || []).length;
+    const words = name.match(/[A-Za-zÀ-ÿ]{2,}/g) || [];
     const key = name.toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "");
-    if (name.length < 5 || seen.has(key)) continue;
+    const isFormula = /[=×÷]|\b\d+\s*[xX]\s*\d+\b/.test(name);
+    const isFragment = /^(de|do|da|dos|das|e|ou|para|com)\b/i.test(name);
+    if (name.length < 8 || name.length > 140 || words.length < 2 || letters < 6 || digits > letters / 4 || isFormula || isFragment || seen.has(key)) return [];
     seen.add(key);
-    result.push({ name: name.slice(0, 140) });
-    if (result.length === 8) break;
+    const description = "description" in item && typeof item.description === "string" ? item.description.replace(/\s+/g, " ").trim().slice(0, 600) : undefined;
+    return [{ name, description }];
+  }).slice(0, 10);
+}
+
+async function callMistralForTopics(system: string, prompt: string) {
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), 30_000);
+  try {
+    const response = await fetch("https://api.mistral.ai/v1/chat/completions", {
+      method: "POST",
+      headers: { Authorization: `Bearer ${process.env.MISTRAL_API_KEY}`, "Content-Type": "application/json" },
+      body: JSON.stringify({
+        model: process.env.MISTRAL_MODEL || "mistral-small-latest",
+        messages: [{ role: "system", content: system }, { role: "user", content: prompt }],
+        response_format: { type: "json_object" },
+        temperature: 0.1,
+        max_tokens: 1200,
+      }),
+      signal: controller.signal,
+    });
+    if (!response.ok) throw new Error(`Mistral respondeu ${response.status}`);
+    const body = await response.json() as { choices?: Array<{ message?: { content?: string } }> };
+    const content = body.choices?.[0]?.message?.content;
+    if (!content) throw new Error("Resposta vazia da Mistral");
+    return content;
+  } finally {
+    clearTimeout(timeout);
   }
-  return result;
 }
 
 export async function suggestTopicsFromMaterial(input: { discipline: string; title: string; content: string }) {
-  const fallback = headingCandidates(input.title, input.content);
-  if (!process.env.OPENAI_API_KEY) return fallback;
+  if (!process.env.OPENAI_API_KEY && !process.env.MISTRAL_API_KEY) throw new Error("AI_NOT_CONFIGURED");
   const normalized = input.content.replace(/\s+/g, " ");
   const middle = Math.floor(normalized.length / 2);
   const sample = [normalized.slice(0, 6000), normalized.slice(Math.max(0, middle - 2000), middle + 2000), normalized.slice(-3000)].join("\n---\n");
+  const system = "Organize uma apostila em uma trilha curta de estudos. Retorne somente JSON válido. Não use títulos partidos, cabeçalhos institucionais, números soltos, fórmulas, exemplos ou exercícios como tópicos. Não invente assuntos ausentes. Una conceitos relacionados e use nomes específicos com descrições de uma frase.";
+  const prompt = `Disciplina: ${input.discipline}\nMaterial: ${input.title}\nTrechos:\n${sample}\nFormato obrigatório: {"topics":[{"name":"...","description":"..."}]}. Gere entre 4 e 10 tópicos conceituais em ordem pedagógica.`;
   try {
-    const raw = await callAI(
-      "Organize uma apostila em uma trilha curta de estudos. Retorne somente JSON válido, sem markdown. Não invente assuntos ausentes. Use nomes específicos e descrições de uma frase.",
-      `Disciplina: ${input.discipline}\nMaterial: ${input.title}\nTrechos:\n${sample}\nFormato: {"topics":[{"name":"...","description":"..."}]}. Gere entre 4 e 10 tópicos em ordem pedagógica.`,
-      1000,
-    );
-    const parsed = JSON.parse(raw.replace(/^```json\s*/i, "").replace(/```$/i, "").trim()) as { topics?: SuggestedTopic[] };
-    const topicRows = (parsed.topics || []).filter((topic) => typeof topic.name === "string" && topic.name.trim().length >= 4).slice(0, 10).map((topic) => ({ name: topic.name.trim().slice(0, 140), description: typeof topic.description === "string" ? topic.description.trim().slice(0, 600) : undefined }));
-    return topicRows.length ? topicRows : fallback;
+    const raw = process.env.MISTRAL_API_KEY ? await callMistralForTopics(system, prompt) : await callAI(system, prompt, 1200);
+    const parsed = JSON.parse(raw.replace(/^```json\s*/i, "").replace(/```$/i, "").trim()) as unknown;
+    const topicRows = cleanSuggestedTopics(parsed);
+    if (topicRows.length < 3) throw new Error("INVALID_TOPICS");
+    return topicRows;
   } catch {
-    return fallback;
+    throw new Error("TOPIC_GENERATION_FAILED");
   }
 }

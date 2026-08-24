@@ -8,6 +8,7 @@ Aplicação pessoal para transformar conteúdos de Segurança da Informação em
 - Tailwind CSS
 - PostgreSQL com Drizzle ORM
 - OpenAI Responses API
+- Mistral API opcional para organizar materiais em tópicos
 - Docker (um único container da aplicação)
 
 ## Rodar localmente
@@ -28,6 +29,8 @@ O login usa `ADMIN_EMAIL` e `ADMIN_PASSWORD`. Não existe cadastro público nest
 | `DATABASE_URL` | sim | Conexão PostgreSQL |
 | `OPENAI_API_KEY` | para IA | Tutor, quiz e teste de entendimento |
 | `OPENAI_MODEL` | não | Modelo configurável; padrão `gpt-5-mini` |
+| `MISTRAL_API_KEY` | não | Alternativa para organizar materiais em tópicos |
+| `MISTRAL_MODEL` | não | Modelo Mistral; padrão `mistral-small-latest` |
 | `ADMIN_EMAIL` | sim | Login único da V0 |
 | `ADMIN_PASSWORD` | sim | Login e assinatura da sessão quando `AUTH_SECRET` não existe |
 | `AUTH_SECRET` | recomendado | Segredo longo para assinar a sessão |
@@ -35,7 +38,7 @@ O login usa `ADMIN_EMAIL` e `ADMIN_PASSWORD`. Não existe cadastro público nest
 | `NODE_ENV` | sim em produção | Use `production` |
 | `PORT` | não | Porta HTTP; padrão 3000 |
 
-Para trocar o modelo, altere somente `OPENAI_MODEL`. As chamadas estão centralizadas em `src/lib/ai.ts`, usam contexto curto, resposta limitada e `store: false`. Cada ação dispara no máximo uma chamada de IA; a correção de quizzes e o plano SOS são locais.
+Para trocar o modelo principal, altere somente `OPENAI_MODEL`. Se a OpenAI não estiver configurada, a organização de materiais pode usar `MISTRAL_API_KEY`. As chamadas estão centralizadas em `src/lib/ai.ts`, usam contexto curto e resposta limitada. Cada ação dispara no máximo uma chamada de IA; a correção de quizzes e o plano SOS são locais.
 
 ## Banco e migrations
 
