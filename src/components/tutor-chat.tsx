@@ -75,15 +75,16 @@ function ChatContent({ messages, needsRetry }: { messages: ChatMessage[]; needsR
   </>;
 }
 
-export function TutorChat({ difficultyId, messages }: { difficultyId: string; messages: ChatMessage[] }) {
+export function TutorChat({ difficultyId, messages, guided = false }: { difficultyId: string; messages: ChatMessage[]; guided?: boolean }) {
   const visibleMessages = messages.filter((message) => message.content.trim());
   const lastMessage = messages.at(-1);
   const needsRetry = lastMessage?.role === "USER" || !lastMessage?.content.trim();
   return <form action={continueTutor} className="card overflow-hidden">
     <input type="hidden" name="difficultyId" value={difficultyId}/>
+    <input type="hidden" name="guided" value={guided ? "1" : "0"}/>
     <div className="border-b px-4 py-4 md:px-5" style={{ borderColor: "var(--line)" }}>
       <h2 className="section-title flex items-center gap-2"><Bot size={20}/>Tutor em ação</h2>
-      <p className="muted mt-1 text-sm">Uma explicação por vez, sem perguntas repetidas</p>
+      <p className="muted mt-1 text-sm">{guided ? "Microlição: explique com suas palavras e depois pratique" : "Uma explicação por vez, sem perguntas repetidas"}</p>
     </div>
     <ChatContent messages={visibleMessages} needsRetry={needsRetry}/>
   </form>;
