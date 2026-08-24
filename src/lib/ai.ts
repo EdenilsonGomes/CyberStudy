@@ -14,14 +14,24 @@ async function callAI(instructions: string, input: string, maxOutputTokens = 650
     return "A chave da OpenAI ainda não foi configurada. Seu relato foi salvo. Configure OPENAI_API_KEY para receber a orientação do tutor.";
   }
   const client = new OpenAI({ apiKey: process.env.OPENAI_API_KEY, timeout: 30_000, maxRetries: 1 });
-  const response = await client.responses.create({
-    model: process.env.OPENAI_MODEL || "gpt-5-mini",
-    instructions,
-    input,
-    max_output_tokens: maxOutputTokens,
-    store: false,
-  });
-  return response.output_text.trim();
+  const request = (tokenLimit: number) => client.responses.create({
+      model: process.env.OPENAI_MODEL || "gpt-5-mini",
+      instructions,
+      input,
+      max_output_tokens: tokenLimit,
+      store: false,
+    });
+  const tokenLimit = Math.max(maxOutputTokens, 1400);
+  let response = await request(tokenLimit);
+  if (response.status === "incomplete" && response.incomplete_details?.reason === "max_output_tokens") {
+    response = await request(tokenLimit * 2);
+  }
+  const output = response.output_text.trim();
+  if (response.status !== "completed" || !output) {
+    console.error("Resposta de IA inválida", { status: response.status, reason: response.incomplete_details?.reason || "sem_texto" });
+    throw new Error("AI_EMPTY_RESPONSE");
+  }
+  return output;
 }
 
 export async function tutorReply(data: TutorInput) {

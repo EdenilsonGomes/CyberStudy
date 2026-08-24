@@ -3,7 +3,7 @@
 import { useEffect, useRef, type KeyboardEvent } from "react";
 import { Bot, Sparkles } from "lucide-react";
 import { useFormStatus } from "react-dom";
-import { continueTutor } from "@/app/actions";
+import { continueTutor, retryTutorResponse } from "@/app/actions";
 
 type ChatMessage = {
   id: string;
@@ -20,7 +20,7 @@ const modes = [
   ["RESUMIR", "Resumir"],
 ] as const;
 
-function ChatContent({ messages }: { messages: ChatMessage[] }) {
+function ChatContent({ messages, needsRetry }: { messages: ChatMessage[]; needsRetry: boolean }) {
   const { pending } = useFormStatus();
   const scrollArea = useRef<HTMLDivElement>(null);
 
@@ -41,6 +41,10 @@ function ChatContent({ messages }: { messages: ChatMessage[] }) {
       </div>}
     </div>
     <div className="border-t p-3 md:p-4" style={{ borderColor: "var(--line)" }}>
+      {needsRetry && <div className="mb-3 flex flex-wrap items-center justify-between gap-2 rounded-xl border p-3 text-sm" style={{ borderColor: "var(--danger)" }}>
+        <span>A resposta anterior não foi concluída.</span>
+        <button formAction={retryTutorResponse} formNoValidate className="btn btn-secondary min-h-9 px-3 py-1 text-xs">Tentar novamente</button>
+      </div>}
       <div className="no-scrollbar mb-3 flex gap-2 overflow-x-auto pb-1">
         {modes.map(([value, label]) => <label key={value} className="badge shrink-0 cursor-pointer px-3 py-2">
           <input className="mr-1" type="radio" name="mode" value={value} defaultChecked={value === "EXPLICAR"}/>{label}
@@ -72,12 +76,15 @@ function ChatContent({ messages }: { messages: ChatMessage[] }) {
 }
 
 export function TutorChat({ difficultyId, messages }: { difficultyId: string; messages: ChatMessage[] }) {
+  const visibleMessages = messages.filter((message) => message.content.trim());
+  const lastMessage = messages.at(-1);
+  const needsRetry = lastMessage?.role === "USER" || !lastMessage?.content.trim();
   return <form action={continueTutor} className="card overflow-hidden">
     <input type="hidden" name="difficultyId" value={difficultyId}/>
     <div className="border-b px-4 py-4 md:px-5" style={{ borderColor: "var(--line)" }}>
       <h2 className="section-title flex items-center gap-2"><Bot size={20}/>Tutor em ação</h2>
       <p className="muted mt-1 text-sm">Uma explicação por vez, sem perguntas repetidas</p>
     </div>
-    <ChatContent messages={messages}/>
+    <ChatContent messages={visibleMessages} needsRetry={needsRetry}/>
   </form>;
 }

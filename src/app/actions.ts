@@ -52,7 +52,7 @@ export async function createDifficulty(form: FormData) {
   const context = await findContext(disciplineId, topicId, report);
   let reply: string;
   try { reply = await tutorReply({ mode, discipline: subject?.discipline || "Disciplina", topic: subject?.topic || "Tópico", report, context }); }
-  catch { redirect("/estudar?erro=tutor"); }
+  catch { redirect(`/estudar?dificuldade=${difficultyId}&erro=tutor`); }
   await db.insert(tutorMessages).values({ difficultyId, role: "ASSISTANT", mode, content: reply });
   await db.insert(studySessions).values({ disciplineId, topicId, activityType: "DIFICULDADE", result: level, note: report });
   redirect(`/estudar?dificuldade=${difficultyId}`);
@@ -70,6 +70,24 @@ export async function continueTutor(form: FormData) {
   catch { redirect(`/estudar?dificuldade=${difficultyId}&erro=tutor`); }
   await db.insert(tutorMessages).values({ difficultyId, role: "ASSISTANT", mode, content: reply });
   await db.update(difficulties).set({ lastReport: report, occurrences: sql`${difficulties.occurrences} + 1`, updatedAt: new Date() }).where(eq(difficulties.id, difficultyId));
+  redirect(`/estudar?dificuldade=${difficultyId}`);
+}
+
+export async function retryTutorResponse(form: FormData) {
+  await requireAuth();
+  const db = getDb();
+  const difficultyId = requireValue(form, "difficultyId");
+  const [item] = await db.select({ difficulty: difficulties, discipline: disciplines.name, topic: topics.name }).from(difficulties).innerJoin(disciplines, eq(difficulties.disciplineId, disciplines.id)).innerJoin(topics, eq(difficulties.topicId, topics.id)).where(eq(difficulties.id, difficultyId)).limit(1);
+  if (!item) throw new Error("Dificuldade não encontrada");
+  const recent = await db.select().from(tutorMessages).where(eq(tutorMessages.difficultyId, difficultyId)).orderBy(desc(tutorMessages.createdAt)).limit(12);
+  const lastUser = recent.find((message) => message.role === "USER" && message.content.trim());
+  if (!lastUser) redirect(`/estudar?dificuldade=${difficultyId}`);
+  const history = recent.filter((message) => message.id !== lastUser.id && message.content.trim()).reverse().slice(-8);
+  const context = await findContext(item.difficulty.disciplineId, item.difficulty.topicId, lastUser.content);
+  let reply: string;
+  try { reply = await tutorReply({ mode: lastUser.mode || "EXPLICAR", discipline: item.discipline, topic: item.topic, report: lastUser.content, context, recentMessages: history.map(({ role, mode, content }) => ({ role, mode, content })) }); }
+  catch { redirect(`/estudar?dificuldade=${difficultyId}&erro=tutor`); }
+  await db.insert(tutorMessages).values({ difficultyId, role: "ASSISTANT", mode: lastUser.mode || "EXPLICAR", content: reply });
   redirect(`/estudar?dificuldade=${difficultyId}`);
 }
 
