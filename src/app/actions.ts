@@ -42,7 +42,7 @@ export async function deleteTopic(form: FormData) {
 }
 
 export async function createDifficulty(form: FormData) {
-  await requireAuth(); const db = getDb(); const disciplineId = requireValue(form, "disciplineId"); const topicId = requireValue(form, "topicId"); const report = requireValue(form, "report").slice(0, 2500); const level = value(form, "level") || "NAO_ENTENDI"; const mode = value(form, "mode") || "DIAGNOSTICAR";
+  await requireAuth(); const db = getDb(); const disciplineId = requireValue(form, "disciplineId"); const topicId = requireValue(form, "topicId"); const helpReason = value(form, "helpReason"); const report = `${requireValue(form, "report")}${helpReason ? `\n\nO que aconteceu: ${helpReason}` : ""}`.slice(0, 2500); const level = value(form, "level") || "NAO_ENTENDI"; const mode = value(form, "mode") || "DIAGNOSTICAR";
   const [existing] = await db.select().from(difficulties).where(and(eq(difficulties.topicId, topicId), eq(difficulties.status, "ABERTA"))).limit(1);
   let difficultyId: string;
   if (existing) { difficultyId = existing.id; await db.update(difficulties).set({ lastReport: report, level, occurrences: sql`${difficulties.occurrences} + 1`, updatedAt: new Date() }).where(eq(difficulties.id, existing.id)); }
