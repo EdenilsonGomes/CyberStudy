@@ -41,7 +41,7 @@ function splitTutorBlocks(content: string, limit = 340) {
 
 function tutorCards(content: string): LessonLearningCard[] {
   return splitTutorBlocks(content).map((rawBlock, index) => {
-    let body = rawBlock.replace(/^\d+[).]\s*/, "").trim();
+    let body = rawBlock.replace(/^\s*(?:\d+[).]|[-*•])\s*/, "").replaceAll("**", "").trim();
     const lower = body.toLowerCase();
     let type: LessonCardType = "CONCEPT";
     let emoji = "💡";
@@ -51,8 +51,12 @@ function tutorCards(content: string): LessonLearningCard[] {
     else if (/exemplo|imagine|analogia|prática/.test(lower)) { type = "ANALOGY"; emoji = "🧩"; }
 
     let title = type === "SCENARIO" ? "Agora é com você" : type === "ANALOGY" ? "Veja na prática" : type === "STEPS" ? "Siga a sequência" : type === "COMPARISON" ? "Compare as ideias" : index === 0 ? "Ideia principal" : "Ponto importante";
+    const lines = body.split("\n").map((line) => line.trim()).filter(Boolean);
     const colon = body.indexOf(":");
-    if (colon > 3 && colon < 76) {
+    if (lines.length > 1 && lines[0].length > 3 && lines[0].length < 76) {
+      title = lines[0].replace(/^[-*•]\s*/, "");
+      body = lines.slice(1).join("\n").replace(/^[-*•]\s*/, "");
+    } else if (colon > 3 && colon < 76) {
       const candidate = body.slice(0, colon).trim();
       if (candidate.split(/\s+/).length <= 9) { title = candidate; body = body.slice(colon + 1).trim(); }
     }
