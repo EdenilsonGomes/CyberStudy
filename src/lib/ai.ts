@@ -1,4 +1,5 @@
 import OpenAI from "openai";
+import type { LessonCardItem, LessonCardType, LessonLearningCard } from "@/db/schema";
 
 type TutorInput = {
   mode: string;
@@ -154,6 +155,7 @@ export type GeneratedLesson = {
   objective: string;
   explanation: string;
   example: string;
+  cards: Array<Omit<LessonLearningCard, "id">>;
   checks: Array<{
     type: "MULTIPLE_CHOICE" | "TRUE_FALSE" | "FILL_BLANK" | "ORDER";
     prompt: string;
@@ -168,12 +170,36 @@ export type GeneratedUnit = { title: string; description: string; lessons: Gener
 function cleanCourse(value: unknown): GeneratedUnit[] {
   if (!value || typeof value !== "object" || !("units" in value) || !Array.isArray(value.units)) return [];
   const validTypes = new Set(["MULTIPLE_CHOICE", "TRUE_FALSE", "FILL_BLANK", "ORDER"]);
+  const validCardTypes = new Set<LessonCardType>(["CONCEPT", "ANALOGY", "COMPARISON", "STEPS", "SCENARIO"]);
   return value.units.slice(0, 4).flatMap((rawUnit: unknown) => {
     if (!rawUnit || typeof rawUnit !== "object" || !("title" in rawUnit) || typeof rawUnit.title !== "string" || !("lessons" in rawUnit) || !Array.isArray(rawUnit.lessons)) return [];
     const lessons = rawUnit.lessons.slice(0, 4).flatMap((rawLesson: unknown) => {
       if (!rawLesson || typeof rawLesson !== "object") return [];
       const lesson = rawLesson as Record<string, unknown>;
       if (typeof lesson.title !== "string" || typeof lesson.objective !== "string" || typeof lesson.explanation !== "string" || typeof lesson.example !== "string" || !Array.isArray(lesson.checks)) return [];
+      const cards = (Array.isArray(lesson.cards) ? lesson.cards : []).slice(0, 5).flatMap((rawCard): Array<Omit<LessonLearningCard, "id">> => {
+        if (!rawCard || typeof rawCard !== "object") return [];
+        const card = rawCard as Record<string, unknown>;
+        if (typeof card.type !== "string" || !validCardTypes.has(card.type as LessonCardType) || typeof card.title !== "string" || typeof card.body !== "string") return [];
+        const items = (Array.isArray(card.items) ? card.items : []).slice(0, 4).flatMap((rawItem): LessonCardItem[] => {
+          if (!rawItem || typeof rawItem !== "object") return [];
+          const item = rawItem as Record<string, unknown>;
+          if (typeof item.label !== "string" || typeof item.description !== "string") return [];
+          return [{ label: item.label.slice(0, 80), description: item.description.slice(0, 220), emoji: typeof item.emoji === "string" ? item.emoji.slice(0, 8) : undefined }];
+        });
+        return [{
+          type: card.type as LessonCardType,
+          title: card.title.slice(0, 120),
+          eyebrow: typeof card.eyebrow === "string" ? card.eyebrow.slice(0, 60) : undefined,
+          body: card.body.slice(0, 360),
+          emoji: typeof card.emoji === "string" ? card.emoji.slice(0, 8) : undefined,
+          items,
+        }];
+      });
+      if (cards.length < 2) cards.push(
+        { type: "CONCEPT", title: lesson.title.slice(0, 120), eyebrow: "Ideia principal", body: lesson.explanation.slice(0, 360), emoji: "💡", items: [] },
+        { type: "SCENARIO", title: "Veja na prática", eyebrow: "Exemplo", body: lesson.example.slice(0, 360), emoji: "🧩", items: [] },
+      );
       const checks = lesson.checks.slice(0, 4).flatMap((rawCheck) => {
         if (!rawCheck || typeof rawCheck !== "object") return [];
         const check = rawCheck as Record<string, unknown>;
@@ -183,7 +209,7 @@ function cleanCourse(value: unknown): GeneratedUnit[] {
         return [{ type: check.type as GeneratedLesson["checks"][number]["type"], prompt: check.prompt.slice(0, 500), options, correctAnswer: check.correctAnswer.slice(0, 240), explanation: check.explanation.slice(0, 500) }];
       });
       if (checks.length < 2) return [];
-      return [{ title: lesson.title.slice(0, 140), objective: lesson.objective.slice(0, 300), explanation: lesson.explanation.slice(0, 900), example: lesson.example.slice(0, 900), checks }];
+      return [{ title: lesson.title.slice(0, 140), objective: lesson.objective.slice(0, 300), explanation: lesson.explanation.slice(0, 900), example: lesson.example.slice(0, 900), cards, checks }];
     });
     if (!lessons.length) return [];
     const description = "description" in rawUnit && typeof rawUnit.description === "string" ? rawUnit.description.slice(0, 400) : "";
@@ -196,8 +222,8 @@ export async function generateCourseFromMaterial(input: { discipline: string; ti
   const normalized = input.content.replace(/\s+/g, " ");
   const middle = Math.floor(normalized.length / 2);
   const sample = [normalized.slice(0, 7000), normalized.slice(Math.max(0, middle - 2500), middle + 2500), normalized.slice(-4000)].join("\n---\n");
-  const system = `Você é um designer instrucional. Transforme material acadêmico em uma trilha curta para iniciante e retorne somente JSON válido. Não invente conteúdo. Ordene pré-requisitos antes de aplicações. Cada microaula deve ensinar um único conceito, em português simples, e durar poucos minutos. Gere entre 2 e 4 unidades, com 2 a 4 microaulas por unidade. Cada microaula deve ter explicação curta, exemplo passo a passo e 2 a 4 verificações. Distribua os tipos MULTIPLE_CHOICE, TRUE_FALSE, FILL_BLANK e ORDER. Para ORDER, ofereça sequências completas como opções. Para FILL_BLANK, options deve ser []. Para os demais, correctAnswer deve ser idêntica a uma opção.`;
-  const prompt = `Disciplina: ${input.discipline}\nMaterial: ${input.title}\nTrechos do material:\n${sample}\n\nFormato obrigatório: {"units":[{"title":"...","description":"...","lessons":[{"title":"...","objective":"...","explanation":"...","example":"...","checks":[{"type":"MULTIPLE_CHOICE","prompt":"...","options":["..."],"correctAnswer":"...","explanation":"..."}]}]}]}`;
+  const system = `Você é um designer instrucional. Transforme material acadêmico em uma trilha curta para iniciante e retorne somente JSON válido. Não invente conteúdo. Ordene pré-requisitos antes de aplicações. Cada microaula deve ensinar um único conceito, em português simples, e durar poucos minutos. Gere entre 2 e 4 unidades, com 2 a 4 microaulas por unidade. Cada microaula deve ter explicação curta, exemplo, entre 3 e 5 cards visuais e 2 a 4 verificações. Os cards são universais para qualquer curso: CONCEPT apresenta uma ideia; ANALOGY usa uma comparação concreta; COMPARISON contrasta itens; STEPS ensina uma sequência; SCENARIO aplica o conceito. Use textos curtos, emoji pertinente à disciplina e items apenas quando ajudarem. Distribua os tipos de questão MULTIPLE_CHOICE, TRUE_FALSE, FILL_BLANK e ORDER. Para ORDER, ofereça sequências completas como opções. Para FILL_BLANK, options deve ser []. Para os demais, correctAnswer deve ser idêntica a uma opção.`;
+  const prompt = `Disciplina: ${input.discipline}\nMaterial: ${input.title}\nTrechos do material:\n${sample}\n\nFormato obrigatório: {"units":[{"title":"...","description":"...","lessons":[{"title":"...","objective":"...","explanation":"...","example":"...","cards":[{"type":"CONCEPT|ANALOGY|COMPARISON|STEPS|SCENARIO","title":"...","eyebrow":"...","body":"...","emoji":"...","items":[{"label":"...","description":"...","emoji":"..."}]}],"checks":[{"type":"MULTIPLE_CHOICE","prompt":"...","options":["..."],"correctAnswer":"...","explanation":"..."}]}]}]}`;
   try {
     const raw = process.env.MISTRAL_API_KEY ? await callMistralForTopics(system, prompt, 5000) : await callAI(system, prompt, 5000);
     const parsed = JSON.parse(raw.replace(/^```json\s*/i, "").replace(/```$/i, "").trim()) as unknown;

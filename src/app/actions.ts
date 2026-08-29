@@ -238,7 +238,7 @@ export async function createLearningPath(form: FormData) {
           topic = createdTopic;
           byName.set(normalize(lesson.title), topic);
         }
-        await tx.insert(microLessons).values({ unitId: createdUnit.id, disciplineId: row.material.disciplineId, topicId: topic.id, title: lesson.title, objective: lesson.objective, position: lessonPosition, content: { explanation: lesson.explanation, example: lesson.example, checks: lesson.checks.map((check, index) => ({ ...check, id: `q${index + 1}` })) } });
+        await tx.insert(microLessons).values({ unitId: createdUnit.id, disciplineId: row.material.disciplineId, topicId: topic.id, title: lesson.title, objective: lesson.objective, position: lessonPosition, content: { explanation: lesson.explanation, example: lesson.example, cards: lesson.cards.map((card, index) => ({ ...card, id: `card-${index + 1}` })), checks: lesson.checks.map((check, index) => ({ ...check, id: `q${index + 1}` })) } });
       }
     }
   });

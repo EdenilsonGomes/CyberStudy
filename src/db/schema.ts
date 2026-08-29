@@ -18,9 +18,28 @@ export type LessonCheck = {
   explanation: string;
 };
 
+export type LessonCardType = "CONCEPT" | "ANALOGY" | "COMPARISON" | "STEPS" | "SCENARIO";
+
+export type LessonCardItem = {
+  label: string;
+  description: string;
+  emoji?: string;
+};
+
+export type LessonLearningCard = {
+  id: string;
+  type: LessonCardType;
+  title: string;
+  eyebrow?: string;
+  body: string;
+  emoji?: string;
+  items?: LessonCardItem[];
+};
+
 export type LessonContent = {
   explanation: string;
   example: string;
+  cards?: LessonLearningCard[];
   checks: LessonCheck[];
 };
 
