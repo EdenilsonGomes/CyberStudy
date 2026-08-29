@@ -7,10 +7,12 @@ export async function POST(request: Request) {
   const password = String(form.get("password") || "");
   const expectedEmail = (process.env.ADMIN_EMAIL || "").trim().toLowerCase();
   const expectedPassword = process.env.ADMIN_PASSWORD || "";
+  const requestedNext = String(form.get("next") || "");
+  const next = requestedNext.startsWith("/") && !requestedNext.startsWith("//") ? requestedNext : "/dashboard";
   if (!expectedEmail || !expectedPassword || !safeEqual(email, expectedEmail) || !safeEqual(password, expectedPassword)) {
-    return redirectTo(request, "/login?error=1");
+    return redirectTo(`/login?error=1&next=${encodeURIComponent(next)}`);
   }
-  const response = redirectTo(request, "/dashboard");
+  const response = redirectTo(next);
   response.cookies.set(SESSION_COOKIE, createSession(email), sessionCookieOptions);
   return response;
 }

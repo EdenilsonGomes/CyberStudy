@@ -1,6 +1,6 @@
 import Link from "next/link";
-import { ArrowLeft, BookOpen, Check, Circle, FileText, Play, Plus, Settings2 } from "lucide-react";
-import { desc, eq } from "drizzle-orm";
+import { BookOpen, Check, Dumbbell, FileText, LockKeyhole, Play, Plus, RotateCcw, Settings2 } from "lucide-react";
+import { asc, desc, eq } from "drizzle-orm";
 import { notFound } from "next/navigation";
 import { getDb } from "@/db";
 import { disciplines, learningUnits, lessonAttempts, materials, microLessons, topics } from "@/db/schema";
@@ -14,12 +14,13 @@ export default async function DisciplinePage({ params, searchParams }: { params:
   const db = getDb();
   const [discipline] = await db.select().from(disciplines).where(eq(disciplines.id, id)).limit(1);
   if (!discipline) notFound();
-  const [topicRows, materialRows, unitRows, lessonRows, attemptRows] = await Promise.all([
+  const [topicRows, materialRows, unitRows, lessonRows, attemptRows, disciplineChoices] = await Promise.all([
     db.select().from(topics).where(eq(topics.disciplineId, id)).orderBy(topics.createdAt),
     db.select().from(materials).where(eq(materials.disciplineId, id)).orderBy(desc(materials.createdAt)),
     db.select().from(learningUnits).where(eq(learningUnits.disciplineId, id)).orderBy(learningUnits.position),
     db.select().from(microLessons).where(eq(microLessons.disciplineId, id)).orderBy(microLessons.createdAt),
     db.select({ attempt: lessonAttempts, lessonId: microLessons.id }).from(lessonAttempts).innerJoin(microLessons, eq(lessonAttempts.lessonId, microLessons.id)).where(eq(microLessons.disciplineId, id)).orderBy(desc(lessonAttempts.createdAt)),
+    db.select().from(disciplines).where(eq(disciplines.status, "ATIVA")).orderBy(asc(disciplines.createdAt)),
   ]);
   const nextTopic = pickNextTopic(topicRows);
   const completedLessonIds = new Set(attemptRows.filter(({ attempt }) => attempt.score >= 60).map(({ lessonId }) => lessonId));
@@ -27,13 +28,32 @@ export default async function DisciplinePage({ params, searchParams }: { params:
   const completed = lessonRows.length ? completedLessonIds.size : topicRows.filter((topic) => topic.status === "DOMINADO").length;
   const total = lessonRows.length || topicRows.length;
   const progress = total ? Math.round((completed / total) * 100) : 0;
+  const topicById = new Map(topicRows.map((topic) => [topic.id, topic]));
 
   return <div className="mx-auto max-w-5xl space-y-6">
-    <Link href="/disciplinas" className="muted flex items-center gap-2 text-sm"><ArrowLeft size={16}/>Disciplinas</Link>
+    <div><p className="eyebrow">Trilha</p><div className="no-scrollbar mt-2 flex gap-2 overflow-x-auto pb-1">{disciplineChoices.map((item) => <Link key={item.id} href={`/disciplinas/${item.id}`} aria-current={item.id === id ? "page" : undefined} className={`trail-chip ${item.id === id ? "trail-chip-active" : ""}`}>{item.name}</Link>)}</div></div>
     <header className="card overflow-hidden"><div className="h-2" style={{ background: discipline.color }}/><div className="p-5 md:p-8"><span className="badge mb-3">{discipline.semester}</span><h1 className="page-title">{discipline.name}</h1><p className="muted mt-2 max-w-2xl">{discipline.description || "Avance um assunto por vez."}</p><div className="mt-6"><div className="mb-2 flex justify-between text-sm"><span>{completed} de {total} etapas concluídas</span><strong>{progress}%</strong></div><div className="progress"><span style={{ width: `${progress}%`, background: discipline.color }}/></div></div>{nextLesson ? <Link className="btn btn-primary mt-6 w-full md:w-auto" href={`/aulas/${nextLesson.id}`}><Play size={18} fill="currentColor"/>Continuar trilha</Link> : nextTopic && <Link className="btn btn-primary mt-6 w-full md:w-auto" href={`/estudar?topico=${nextTopic.id}&sessao=1`}><Play size={18} fill="currentColor"/>Continuar trilha</Link>}</div></header>
 
     <section className="card p-5 md:p-7"><div className="mb-6 flex items-center justify-between"><div><p className="muted text-xs font-bold uppercase tracking-widest">Sua sequência</p><h2 className="section-title flex items-center gap-2"><BookOpen size={19}/>Trilha de aprendizagem</h2></div><span className="badge">{topicRows.length} etapas</span></div>
-      {lessonRows.length > 0 ? <div className="space-y-7">{unitRows.map((unit, unitIndex) => { const ownLessons = lessonRows.filter((lesson) => lesson.unitId === unit.id); return <section key={unit.id}><div className="mb-3"><span className="badge">Unidade {unitIndex + 1}</span><h3 className="mt-2 text-lg font-extrabold">{unit.title}</h3>{unit.description && <p className="muted mt-1 text-sm">{unit.description}</p>}</div><div className="learning-path">{ownLessons.map((lesson) => { const done = completedLessonIds.has(lesson.id); const current = lesson.id === nextLesson?.id; return <Link key={lesson.id} href={`/aulas/${lesson.id}`} className={`learning-step ${current ? "learning-step-current" : ""}`}><span className={`learning-node ${done ? "learning-node-done" : current ? "learning-node-current" : ""}`}>{done ? <Check size={19}/> : current ? <Play size={16} fill="currentColor"/> : <Circle size={16}/>}</span><div className="min-w-0 flex-1"><strong>{lesson.title}</strong><p className="muted mt-1 text-xs">{current ? "Seu próximo passo" : done ? "Concluída" : lesson.objective}</p></div></Link>; })}</div></section>; })}</div> : topicRows.length === 0 ? <div className="empty">Envie um material e crie sua primeira trilha.</div> : <div className="learning-path">{topicRows.map((topic) => { const done = topic.status === "DOMINADO"; const current = topic.id === nextTopic?.id; return <Link key={topic.id} href={`/estudar?topico=${topic.id}&sessao=1`} className={`learning-step ${current ? "learning-step-current" : ""}`}><span className={`learning-node ${done ? "learning-node-done" : current ? "learning-node-current" : ""}`}>{done ? <Check size={19}/> : current ? <Play size={16} fill="currentColor"/> : <Circle size={16}/>}</span><div className="min-w-0 flex-1"><div className="flex items-start justify-between gap-3"><strong>{topic.name}</strong><span className="badge shrink-0">{topic.mastery}%</span></div><p className="muted mt-1 text-xs">{current ? "Seu próximo passo" : topicStatusLabel[topic.status] || topic.status}</p></div></Link>; })}</div>}
+      {lessonRows.length > 0 ? <div className="space-y-9">{unitRows.map((unit, unitIndex) => {
+        const ownLessons = lessonRows.filter((lesson) => lesson.unitId === unit.id);
+        const unitDone = ownLessons.length > 0 && ownLessons.every((lesson) => completedLessonIds.has(lesson.id));
+        return <section key={unit.id}><div className="mb-4"><span className="badge">Unidade {unitIndex + 1}</span><h3 className="mt-2 text-lg font-extrabold">{unit.title}</h3>{unit.description && <p className="muted mt-1 text-sm">{unit.description}</p>}</div><div className="learning-path">{ownLessons.map((lesson) => {
+          const done = completedLessonIds.has(lesson.id);
+          const current = lesson.id === nextLesson?.id;
+          const review = Boolean(lesson.topicId && topicById.get(lesson.topicId)?.status === "REVISAR");
+          const accessible = done || current || review;
+          const content = <><span className={`learning-node ${done ? "learning-node-done" : current ? "learning-node-current" : review ? "learning-node-review" : ""}`}>{done ? <Check size={19}/> : review ? <RotateCcw size={17}/> : current ? <Play size={16} fill="currentColor"/> : <LockKeyhole size={16}/>}</span><div className="min-w-0 flex-1"><strong>{lesson.title}</strong><p className="muted mt-1 text-xs">{current ? "Seu próximo passo" : review ? "Revisão recomendada" : done ? "Concluída" : "Conclua a etapa anterior"}</p></div></>;
+          return accessible ? <Link key={lesson.id} href={`/aulas/${lesson.id}`} className={`learning-step ${current ? "learning-step-current" : ""} ${review ? "learning-step-review" : ""}`}>{content}</Link> : <div key={lesson.id} className="learning-step learning-step-locked" aria-disabled="true">{content}</div>;
+        })}<Link href={unitDone ? "/revisoes" : "#"} aria-disabled={!unitDone} className={`learning-step learning-step-practice ${unitDone ? "" : "learning-step-locked"}`}><span className={`learning-node ${unitDone ? "learning-node-practice" : ""}`}>{unitDone ? <Dumbbell size={17}/> : <LockKeyhole size={16}/>}</span><div className="min-w-0 flex-1"><strong>Prática da unidade</strong><p className="muted mt-1 text-xs">{unitDone ? "Fixe o que aprendeu" : "Disponível ao concluir a unidade"}</p></div></Link></div></section>;
+      })}</div> : topicRows.length === 0 ? <div className="empty">Envie um material e crie sua primeira trilha.</div> : <div className="learning-path">{topicRows.map((topic) => {
+        const done = topic.status === "DOMINADO";
+        const current = topic.id === nextTopic?.id;
+        const review = topic.status === "REVISAR";
+        const accessible = done || current || review;
+        const content = <><span className={`learning-node ${done ? "learning-node-done" : current ? "learning-node-current" : review ? "learning-node-review" : ""}`}>{done ? <Check size={19}/> : review ? <RotateCcw size={17}/> : current ? <Play size={16} fill="currentColor"/> : <LockKeyhole size={16}/>}</span><div className="min-w-0 flex-1"><div className="flex items-start justify-between gap-3"><strong>{topic.name}</strong><span className="badge shrink-0">{topic.mastery}%</span></div><p className="muted mt-1 text-xs">{current ? "Seu próximo passo" : review ? "Revisar" : done ? "Concluído" : topicStatusLabel[topic.status] || topic.status}</p></div></>;
+        return accessible ? <Link key={topic.id} href={`/estudar?topico=${topic.id}&sessao=1`} className={`learning-step ${current ? "learning-step-current" : ""}`}>{content}</Link> : <div key={topic.id} className="learning-step learning-step-locked" aria-disabled="true">{content}</div>;
+      })}</div>}
     </section>
 
     <details open={Boolean(query.trilha || query.material)} className="card p-5 md:p-6"><summary className="flex cursor-pointer list-none items-center justify-between gap-3 font-extrabold"><span className="flex items-center gap-2"><Settings2 size={19}/>Gerenciar disciplina</span><span className="muted text-xs font-normal">tópicos e materiais</span></summary><div className="mt-7 grid gap-7 lg:grid-cols-2">

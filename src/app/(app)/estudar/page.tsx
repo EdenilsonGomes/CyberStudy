@@ -3,12 +3,13 @@ import { BookOpenCheck, Brain, Check, CheckCircle2, ChevronRight, CircleHelp, Fl
 import { and, asc, desc, eq } from "drizzle-orm";
 import { getDb } from "@/db";
 import { difficulties, disciplines, lessonAttempts, microLessons, quizAttempts, quizQuestions, quizzes, reviews, studySessions, topics, tutorMessages } from "@/db/schema";
-import { createDifficulty, generateQuiz, startGuidedSession, submitQuiz, testUnderstanding } from "@/app/actions";
+import { createDifficulty, generateQuiz, startGuidedSession, testUnderstanding } from "@/app/actions";
 import { SubmitButton } from "@/components/submit-button";
 import { TutorChat } from "@/components/tutor-chat";
+import { QuizRunner } from "@/components/quiz-runner";
 import { learningRhythm, pickNextTopic } from "@/lib/learning";
 
-type StudyQuery = { topico?: string; dificuldade?: string; quiz?: string; tentativa?: string; entendimento?: string; erro?: string; sessao?: string; guiada?: string };
+type StudyQuery = { topico?: string; dificuldade?: string; quiz?: string; tentativa?: string; entendimento?: string; erro?: string; sessao?: string; guiada?: string; foco?: string; voltar?: string };
 
 export default async function StudyPage({ searchParams }: { searchParams: Promise<StudyQuery> }) {
   const query = await searchParams;
@@ -53,8 +54,12 @@ export default async function StudyPage({ searchParams }: { searchParams: Promis
     rhythm = learningRhythm(recentSessions.map((session) => session.createdAt));
   }
 
-  return <div className="mx-auto max-w-5xl space-y-6">
-    <header><p className="muted text-sm">Sessões curtas, progresso real</p><h1 className="page-title">{activeDifficulty ? "Tutor avançado" : "Estudar agora"}</h1></header>
+  const focusTutor = query.foco === "1" && Boolean(activeDifficulty);
+  const focusMode = focusTutor || Boolean(activeQuiz && !attempt);
+  const returnTo = query.voltar?.startsWith("/") && !query.voltar.startsWith("//") ? query.voltar : "";
+
+  return <div className={`${focusMode ? "study-focus" : ""} mx-auto max-w-5xl space-y-6`}>
+    {!activeQuiz && <header><p className="muted text-sm">{focusTutor ? selectedTopic?.name : "Sessões curtas, progresso real"}</p><h1 className="page-title">{focusTutor ? "Tire sua dúvida" : activeDifficulty ? "Tutor contextual" : "Estudar agora"}</h1></header>}
     {query.erro && <p className="rounded-xl border p-4 text-sm" style={{ borderColor: "var(--danger)", color: "var(--danger)" }}>Não foi possível concluir esta ação. Verifique a configuração da IA e tente novamente.</p>}
 
     {query.sessao === "1" && selectedTopic && !activeDifficulty && !activeQuiz && <section className="card overflow-hidden">
@@ -72,7 +77,7 @@ export default async function StudyPage({ searchParams }: { searchParams: Promis
     {activeDifficulty && <section className="space-y-4">
       {query.guiada === "1" && <div className="card p-4"><div className="mb-3 flex items-center justify-between text-xs font-bold"><span>SESSÃO GUIADA</span><span className="muted">Explicação e compreensão</span></div><div className="progress"><span style={{ width: "65%" }}/></div></div>}
       <div className="grid gap-5 lg:grid-cols-[minmax(0,1fr)_300px]">
-        <TutorChat difficultyId={activeDifficulty.id} guided={query.guiada === "1"} messages={messages.map(({ id, role, mode, content }) => ({ id, role, mode, content }))}/>
+        <TutorChat difficultyId={activeDifficulty.id} guided={query.guiada === "1"} focus={focusTutor} returnTo={returnTo} messages={messages.map(({ id, role, mode, content }) => ({ id, role, mode, content }))}/>
         <aside className="space-y-4">
           {query.guiada === "1" && <div className="card p-5"><span className="badge mb-3"><Check size={14}/> Depois de responder</span><h3 className="font-extrabold">Pratique o que aprendeu</h3><p className="muted mt-2 text-sm">Cinco questões encerram a sessão e atualizam seu progresso.</p><form action={generateQuiz} className="mt-4"><input type="hidden" name="disciplineId" value={activeDifficulty.disciplineId}/><input type="hidden" name="topicId" value={activeDifficulty.topicId}/><input type="hidden" name="count" value="5"/><SubmitButton pendingText="Criando prática..." className="btn btn-primary w-full"><FlaskConical size={17}/> Ir para as 5 questões</SubmitButton></form></div>}
           <div className="card p-5"><span className="label">Assunto</span><strong>{selectedTopic?.name}</strong><p className="muted mt-2 text-sm">{activeDifficulty.originalReport}</p></div>
@@ -87,7 +92,7 @@ export default async function StudyPage({ searchParams }: { searchParams: Promis
         {attempt.weaknesses[0] && <div className="rounded-xl border p-4" style={{ borderColor: "var(--line)" }}><span className="label">Principal ponto para reforçar</span><p className="text-sm">{attempt.weaknesses[0]}</p></div>}
         <details className="rounded-xl border p-4" style={{ borderColor: "var(--line)" }}><summary className="cursor-pointer font-bold">Ver correção das questões</summary><div className="mt-4 space-y-4">{questions.map((question, index) => { const answer = attempt.answers[question.id]; const ok = answer === question.correctAnswer; return <div key={question.id} className="rounded-xl bg-[var(--surface-2)] p-4"><strong>{index + 1}. {question.prompt}</strong><p className="mt-2 text-sm">{ok ? "✓ Você acertou" : `Sua resposta: ${answer || "Sem resposta"}`}</p>{!ok && <p className="mt-1 text-sm">Correta: {question.correctAnswer}</p>}<p className="muted mt-2 text-sm">{question.explanation}</p></div>; })}</div></details>
         <div className="grid gap-3 sm:grid-cols-2"><Link className="btn btn-primary" href="/dashboard">Concluir e voltar ao início</Link>{activeQuiz.topicId && <Link className="btn btn-secondary" href={`/estudar?topico=${activeQuiz.topicId}&sessao=1`}><RotateCcw size={17}/> Praticar novamente</Link>}</div>
-      </div> : <><div className="mb-6"><span className="badge mb-3">Etapa final · 5 questões</span><h2 className="section-title flex items-center gap-2"><FlaskConical size={20}/>{activeQuiz.title}</h2><p className="muted mt-1 text-sm">Responda sem consultar. A correção não faz nova chamada de IA.</p></div><form action={submitQuiz} className="space-y-6"><input type="hidden" name="quizId" value={activeQuiz.id}/>{questions.map((question, index) => <fieldset key={question.id} className="rounded-xl border p-4" style={{ borderColor: "var(--line)" }}><legend className="px-2 font-bold">{index + 1}. {question.prompt}</legend><div className="mt-3 grid gap-2">{question.options.map((option) => <label key={option} className="flex cursor-pointer gap-3 rounded-xl bg-[var(--surface-2)] p-3 text-sm"><input type="radio" name={`q_${question.id}`} value={option} required/><span>{option}</span></label>)}</div></fieldset>)}<SubmitButton pendingText="Corrigindo..." className="btn btn-primary w-full">Finalizar sessão</SubmitButton></form></>}
+      </div> : <QuizRunner quizId={activeQuiz.id} title={activeQuiz.title} questions={questions.map(({ id, prompt, options, correctAnswer, explanation }) => ({ id, prompt, options, correctAnswer, explanation }))} reviewHref={activeQuiz.topicId ? `/estudar?topico=${activeQuiz.topicId}&sessao=1` : "/disciplinas"}/>}
     </section>}
 
     {understanding && <section className="card p-6"><h2 className="section-title mb-4 flex items-center gap-2"><CheckCircle2 size={20}/>Avaliação de entendimento</h2><p className="whitespace-pre-wrap text-sm leading-7">{understanding.note}</p><Link className="btn btn-primary mt-5" href="/dashboard">Voltar ao início</Link></section>}

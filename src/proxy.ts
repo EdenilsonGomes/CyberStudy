@@ -3,7 +3,8 @@ import { redirectTo } from "@/lib/http";
 
 export function proxy(request: NextRequest) {
   if (!request.cookies.get("cyberstudy_session")?.value) {
-    return redirectTo(request, `/login?next=${encodeURIComponent(request.nextUrl.pathname)}`, 307);
+    const next = `${request.nextUrl.pathname}${request.nextUrl.search}`;
+    return redirectTo(`/login?next=${encodeURIComponent(next)}`, 307);
   }
   return NextResponse.next();
 }

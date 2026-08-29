@@ -11,6 +11,15 @@ import { requireAuth } from "@/lib/auth";
 
 const value = (form: FormData, key: string) => String(form.get(key) || "").trim();
 const requireValue = (form: FormData, key: string) => { const result = value(form, key); if (!result) throw new Error(`Campo obrigatório: ${key}`); return result; };
+const safeLocalPath = (candidate: string) => candidate.startsWith("/") && !candidate.startsWith("//") ? candidate : "";
+const tutorQuery = (difficultyId: string, guided: boolean, focus: boolean, returnTo: string, error = "") => {
+  const params = new URLSearchParams({ dificuldade: difficultyId });
+  if (guided) params.set("guiada", "1");
+  if (focus) params.set("foco", "1");
+  if (returnTo) params.set("voltar", returnTo);
+  if (error) params.set("erro", error);
+  return `/estudar?${params}`;
+};
 
 export async function createDiscipline(form: FormData) {
   await requireAuth();
@@ -42,7 +51,7 @@ export async function deleteTopic(form: FormData) {
 }
 
 export async function createDifficulty(form: FormData) {
-  await requireAuth(); const db = getDb(); const disciplineId = requireValue(form, "disciplineId"); const topicId = requireValue(form, "topicId"); const helpReason = value(form, "helpReason"); const report = `${requireValue(form, "report")}${helpReason ? `\n\nO que aconteceu: ${helpReason}` : ""}`.slice(0, 2500); const level = value(form, "level") || "NAO_ENTENDI"; const mode = value(form, "mode") || "DIAGNOSTICAR";
+  await requireAuth(); const db = getDb(); const disciplineId = requireValue(form, "disciplineId"); const topicId = requireValue(form, "topicId"); const helpReason = value(form, "helpReason"); const report = `${requireValue(form, "report")}${helpReason ? `\n\nO que aconteceu: ${helpReason}` : ""}`.slice(0, 2500); const level = value(form, "level") || "NAO_ENTENDI"; const mode = value(form, "mode") || "DIAGNOSTICAR"; const focus = value(form, "focus") === "1"; const returnTo = safeLocalPath(value(form, "returnTo"));
   const [existing] = await db.select().from(difficulties).where(and(eq(difficulties.topicId, topicId), eq(difficulties.status, "ABERTA"))).limit(1);
   let difficultyId: string;
   if (existing) { difficultyId = existing.id; await db.update(difficulties).set({ lastReport: report, level, occurrences: sql`${difficulties.occurrences} + 1`, updatedAt: new Date() }).where(eq(difficulties.id, existing.id)); }
@@ -52,10 +61,10 @@ export async function createDifficulty(form: FormData) {
   const context = await findContext(disciplineId, topicId, report);
   let reply: string;
   try { reply = await tutorReply({ mode, discipline: subject?.discipline || "Disciplina", topic: subject?.topic || "Tópico", report, context }); }
-  catch { redirect(`/estudar?dificuldade=${difficultyId}&erro=tutor`); }
+  catch { redirect(tutorQuery(difficultyId, false, focus, returnTo, "tutor")); }
   await db.insert(tutorMessages).values({ difficultyId, role: "ASSISTANT", mode, content: reply });
   await db.insert(studySessions).values({ disciplineId, topicId, activityType: "DIFICULDADE", result: level, note: report });
-  redirect(`/estudar?dificuldade=${difficultyId}`);
+  redirect(tutorQuery(difficultyId, false, focus, returnTo));
 }
 
 export async function startGuidedSession(form: FormData) {
@@ -77,7 +86,7 @@ export async function startGuidedSession(form: FormData) {
 }
 
 export async function continueTutor(form: FormData) {
-  await requireAuth(); const db = getDb(); const difficultyId = requireValue(form, "difficultyId"); const report = requireValue(form, "message").slice(0, 2500); const mode = value(form, "mode") || "EXPLICAR"; const guided = value(form, "guided") === "1";
+  await requireAuth(); const db = getDb(); const difficultyId = requireValue(form, "difficultyId"); const report = requireValue(form, "message").slice(0, 2500); const mode = value(form, "mode") || "EXPLICAR"; const guided = value(form, "guided") === "1"; const focus = value(form, "focus") === "1"; const returnTo = safeLocalPath(value(form, "returnTo"));
   const [item] = await db.select({ difficulty: difficulties, discipline: disciplines.name, topic: topics.name }).from(difficulties).innerJoin(disciplines, eq(difficulties.disciplineId, disciplines.id)).innerJoin(topics, eq(difficulties.topicId, topics.id)).where(eq(difficulties.id, difficultyId)).limit(1);
   if (!item) throw new Error("Dificuldade não encontrada");
   const history = await db.select().from(tutorMessages).where(eq(tutorMessages.difficultyId, difficultyId)).orderBy(desc(tutorMessages.createdAt)).limit(8);
@@ -85,10 +94,10 @@ export async function continueTutor(form: FormData) {
   const context = await findContext(item.difficulty.disciplineId, item.difficulty.topicId, report);
   let reply: string;
   try { reply = await tutorReply({ mode, discipline: item.discipline, topic: item.topic, report, context, recentMessages: history.reverse().map(({ role, mode: messageMode, content }) => ({ role, mode: messageMode, content })) }); }
-  catch { redirect(`/estudar?dificuldade=${difficultyId}${guided ? "&guiada=1" : ""}&erro=tutor`); }
+  catch { redirect(tutorQuery(difficultyId, guided, focus, returnTo, "tutor")); }
   await db.insert(tutorMessages).values({ difficultyId, role: "ASSISTANT", mode, content: reply });
   await db.update(difficulties).set({ lastReport: report, occurrences: sql`${difficulties.occurrences} + 1`, updatedAt: new Date() }).where(eq(difficulties.id, difficultyId));
-  redirect(`/estudar?dificuldade=${difficultyId}${guided ? "&guiada=1" : ""}`);
+  redirect(tutorQuery(difficultyId, guided, focus, returnTo));
 }
 
 export async function retryTutorResponse(form: FormData) {
@@ -96,18 +105,20 @@ export async function retryTutorResponse(form: FormData) {
   const db = getDb();
   const difficultyId = requireValue(form, "difficultyId");
   const guided = value(form, "guided") === "1";
+  const focus = value(form, "focus") === "1";
+  const returnTo = safeLocalPath(value(form, "returnTo"));
   const [item] = await db.select({ difficulty: difficulties, discipline: disciplines.name, topic: topics.name }).from(difficulties).innerJoin(disciplines, eq(difficulties.disciplineId, disciplines.id)).innerJoin(topics, eq(difficulties.topicId, topics.id)).where(eq(difficulties.id, difficultyId)).limit(1);
   if (!item) throw new Error("Dificuldade não encontrada");
   const recent = await db.select().from(tutorMessages).where(eq(tutorMessages.difficultyId, difficultyId)).orderBy(desc(tutorMessages.createdAt)).limit(12);
   const lastUser = recent.find((message) => message.role === "USER" && message.content.trim());
-  if (!lastUser) redirect(`/estudar?dificuldade=${difficultyId}${guided ? "&guiada=1" : ""}`);
+  if (!lastUser) redirect(tutorQuery(difficultyId, guided, focus, returnTo));
   const history = recent.filter((message) => message.id !== lastUser.id && message.content.trim()).reverse().slice(-8);
   const context = await findContext(item.difficulty.disciplineId, item.difficulty.topicId, lastUser.content);
   let reply: string;
   try { reply = await tutorReply({ mode: lastUser.mode || "EXPLICAR", discipline: item.discipline, topic: item.topic, report: lastUser.content, context, recentMessages: history.map(({ role, mode, content }) => ({ role, mode, content })) }); }
-  catch { redirect(`/estudar?dificuldade=${difficultyId}${guided ? "&guiada=1" : ""}&erro=tutor`); }
+  catch { redirect(tutorQuery(difficultyId, guided, focus, returnTo, "tutor")); }
   await db.insert(tutorMessages).values({ difficultyId, role: "ASSISTANT", mode: lastUser.mode || "EXPLICAR", content: reply });
-  redirect(`/estudar?dificuldade=${difficultyId}${guided ? "&guiada=1" : ""}`);
+  redirect(tutorQuery(difficultyId, guided, focus, returnTo));
 }
 
 export async function updateDifficultyStatus(form: FormData) {

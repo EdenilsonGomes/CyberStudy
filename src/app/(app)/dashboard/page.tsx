@@ -1,30 +1,58 @@
 import Link from "next/link";
-import { ArrowRight, BookOpen, CalendarDays, CheckCircle2, Flame, GraduationCap, Play, ShieldCheck, Target } from "lucide-react";
+import { ArrowRight, CalendarDays, Flame, Play, Target } from "lucide-react";
 import { and, asc, desc, eq, gte, lte } from "drizzle-orm";
 import { getDb } from "@/db";
 import { disciplines, exams, learningUnits, lessonAttempts, microLessons, reviews, studySessions, topics } from "@/db/schema";
 import { learningRhythm, pickNextTopic } from "@/lib/learning";
 
 export default async function DashboardPage() {
-  const db = getDb(); const today = new Date().toISOString().slice(0,10);
-  const [activeDisciplines,allTopics,dueReviews,nextExams,recentSessions,lessonRows,attemptRows]=await Promise.all([
-    db.select().from(disciplines).where(eq(disciplines.status,"ATIVA")),db.select().from(topics).orderBy(asc(topics.createdAt)),
-    db.select({review:reviews,topic:topics.name,discipline:disciplines.name}).from(reviews).innerJoin(topics,eq(reviews.topicId,topics.id)).innerJoin(disciplines,eq(reviews.disciplineId,disciplines.id)).where(and(eq(reviews.status,"PENDENTE"),lte(reviews.scheduledFor,today))).orderBy(asc(reviews.scheduledFor)),
-    db.select({exam:exams,discipline:disciplines.name}).from(exams).innerJoin(disciplines,eq(exams.disciplineId,disciplines.id)).where(gte(exams.examDate,today)).orderBy(asc(exams.examDate)).limit(1),
-    db.select({createdAt:studySessions.createdAt}).from(studySessions).orderBy(desc(studySessions.createdAt)).limit(120),
-    db.select({lesson:microLessons,unit:learningUnits}).from(microLessons).innerJoin(learningUnits,eq(microLessons.unitId,learningUnits.id)).orderBy(learningUnits.position,microLessons.position),
-    db.select({lessonId:lessonAttempts.lessonId,score:lessonAttempts.score}).from(lessonAttempts).orderBy(desc(lessonAttempts.createdAt)),
+  const db = getDb();
+  const today = new Date().toISOString().slice(0, 10);
+  const [activeDisciplines, allTopics, dueReviews, nextExams, recentSessions, lessonRows, attemptRows] = await Promise.all([
+    db.select().from(disciplines).where(eq(disciplines.status, "ATIVA")),
+    db.select().from(topics).orderBy(asc(topics.createdAt)),
+    db.select({ review: reviews, topic: topics.name, discipline: disciplines.name }).from(reviews).innerJoin(topics, eq(reviews.topicId, topics.id)).innerJoin(disciplines, eq(reviews.disciplineId, disciplines.id)).where(and(eq(reviews.status, "PENDENTE"), lte(reviews.scheduledFor, today))).orderBy(asc(reviews.scheduledFor)).limit(3),
+    db.select({ exam: exams, discipline: disciplines.name }).from(exams).innerJoin(disciplines, eq(exams.disciplineId, disciplines.id)).where(gte(exams.examDate, today)).orderBy(asc(exams.examDate)).limit(1),
+    db.select({ createdAt: studySessions.createdAt }).from(studySessions).orderBy(desc(studySessions.createdAt)).limit(120),
+    db.select({ lesson: microLessons, unit: learningUnits }).from(microLessons).innerJoin(learningUnits, eq(microLessons.unitId, learningUnits.id)).orderBy(learningUnits.position, microLessons.position),
+    db.select({ lessonId: lessonAttempts.lessonId, score: lessonAttempts.score }).from(lessonAttempts).orderBy(desc(lessonAttempts.createdAt)),
   ]);
-  const completedIds=new Set(attemptRows.filter(a=>a.score>=60).map(a=>a.lessonId)); const activeLessons=lessonRows.filter(({lesson})=>activeDisciplines.some(d=>d.id===lesson.disciplineId)); const nextLessonRow=activeLessons.find(({lesson})=>!completedIds.has(lesson.id));
-  const activeTopics=allTopics.filter(t=>activeDisciplines.some(d=>d.id===t.disciplineId)); const nextTopic=pickNextTopic(activeTopics,dueReviews.map(({review})=>review.topicId)); const nextDiscipline=activeDisciplines.find(d=>d.id===(nextLessonRow?.lesson.disciplineId||nextTopic?.disciplineId));
-  const rhythm=learningRhythm(recentSessions.map(s=>s.createdAt)); const nextExam=nextExams[0]; const name=(process.env.ADMIN_EMAIL?.split("@")[0]||"estudante").split(/[._-]/)[0]; const studentName=name.charAt(0).toUpperCase()+name.slice(1);
-  const continueHref=nextLessonRow?`/aulas/${nextLessonRow.lesson.id}`:nextTopic?`/estudar?topico=${nextTopic.id}&sessao=1`:"/disciplinas"; const continueTitle=nextLessonRow?.lesson.title||nextTopic?.name||"Crie sua primeira disciplina";
-  return <div className="space-y-5"><header className="flex items-start justify-between gap-3"><div><p className="muted text-sm">Olá, {studentName}</p><h1 className="page-title mt-1">Pronto para avançar?</h1></div><span className="badge"><Flame size={14}/>{rhythm.streak} dias</span></header>
-    <div className="grid gap-5 xl:grid-cols-[minmax(0,1.2fr)_360px]"><div className="space-y-5"><section className="card cyber-grid overflow-hidden p-5 md:p-7"><div className="flex items-start justify-between gap-4"><div><span className="badge mb-4"><ShieldCheck size={14}/>Próximo passo</span><p className="muted text-xs font-bold uppercase tracking-widest">{nextDiscipline?.name||"CyberStudy"}{nextLessonRow&&` · ${nextLessonRow.unit.title}`}</p><h2 className="mt-2 text-2xl font-black md:text-3xl">{continueTitle}</h2><p className="muted mt-2 text-sm">{nextLessonRow?"Conceito, exemplo e prática · 8 min":"Sessão guiada para começar"}</p></div><span className="metric-icon"><BookOpen size={20}/></span></div><Link className="btn btn-primary mt-6 w-full md:w-auto" href={continueHref}>Continuar <Play size={17} fill="currentColor"/></Link></section>
-      <section className="grid grid-cols-2 gap-3 md:grid-cols-4"><div className="card metric-card"><Flame className="mb-3 text-orange-400" size={20}/><strong className="display text-2xl">{rhythm.streak}</strong><p className="muted text-xs">dias em sequência</p></div><div className="card metric-card"><CheckCircle2 className="mb-3 text-[var(--success)]" size={20}/><strong className="display text-2xl">{completedIds.size}</strong><p className="muted text-xs">aulas concluídas</p></div><Link href="/revisoes" className="card metric-card"><Target className="mb-3 text-[var(--brand)]" size={20}/><strong className="display text-2xl">{dueReviews.length}</strong><p className="muted text-xs">revisões hoje</p></Link><div className="card metric-card"><BookOpen className="mb-3 text-[var(--brand-strong)]" size={20}/><strong className="display text-2xl">{activeDisciplines.length}</strong><p className="muted text-xs">disciplinas ativas</p></div></section>
-      <section className="card p-5 md:p-6"><div className="mb-5 flex items-center justify-between"><h2 className="section-title">Minhas disciplinas</h2><Link className="muted text-xs font-bold" href="/disciplinas">Ver todas</Link></div><div className="space-y-4">{activeDisciplines.map(d=>{const own=activeLessons.filter(({lesson})=>lesson.disciplineId===d.id);const done=own.filter(({lesson})=>completedIds.has(lesson.id)).length;const pct=own.length?Math.round(done/own.length*100):0;return <Link href={`/disciplinas/${d.id}`} key={d.id} className="block rounded-xl bg-[var(--surface-2)] p-4"><div className="mb-2 flex justify-between gap-3 text-sm"><strong className="truncate">{d.name}</strong><span className="muted">{pct}%</span></div><div className="progress"><span style={{width:`${pct}%`,background:d.color}}/></div></Link>})}</div></section></div>
-      <aside className="space-y-5"><section className="card p-5"><div className="mb-4 flex items-center justify-between"><h2 className="section-title">Meta de hoje</h2><Target size={19} className="text-[var(--brand)]"/></div><div className="mb-2 flex justify-between text-sm"><span className="muted">Uma sessão curta</span><strong>{rhythm.completedToday?"Concluída":"0 / 1"}</strong></div><div className="progress"><span style={{width:rhythm.completedToday?"100%":"12%"}}/></div></section>
-      <section className="card smart-review p-5"><span className="badge mb-3">Revisão inteligente</span><h2 className="section-title">{dueReviews.length?"Você tem pontos para reforçar":"Tudo em dia por aqui"}</h2><p className="muted mt-2 text-sm">{dueReviews[0]?`${dueReviews[0].topic} · ${dueReviews[0].discipline}`:"Continue avançando na sua trilha."}</p><Link href="/revisoes" className="btn btn-secondary mt-5 w-full">Revisar agora <ArrowRight size={16}/></Link></section>
-      <section className="card p-5"><div className="flex items-center gap-3"><span className="metric-icon"><GraduationCap size={19}/></span><div><p className="muted text-xs">Próxima prova</p><strong>{nextExam?.exam.name||"Nenhuma cadastrada"}</strong></div></div>{nextExam&&<p className="muted mt-4 flex items-center gap-2 text-sm"><CalendarDays size={16}/>{new Date(`${nextExam.exam.examDate}T12:00:00`).toLocaleDateString("pt-BR")}</p>}</section></aside></div>
+
+  const completedIds = new Set(attemptRows.filter((attempt) => attempt.score >= 60).map((attempt) => attempt.lessonId));
+  const activeIds = new Set(activeDisciplines.map((discipline) => discipline.id));
+  const activeLessons = lessonRows.filter(({ lesson }) => activeIds.has(lesson.disciplineId));
+  const nextLessonRow = activeLessons.find(({ lesson }) => !completedIds.has(lesson.id));
+  const activeTopics = allTopics.filter((topic) => activeIds.has(topic.disciplineId));
+  const nextTopic = pickNextTopic(activeTopics, dueReviews.map(({ review }) => review.topicId));
+  const rhythm = learningRhythm(recentSessions.map((session) => session.createdAt));
+  const completedToday = recentSessions.filter((session) => session.createdAt.toISOString().slice(0, 10) === today).length;
+  const nextExam = nextExams[0];
+  const rawName = (process.env.ADMIN_EMAIL?.split("@")[0] || "estudante").split(/[._-]/)[0];
+  const studentName = rawName.charAt(0).toUpperCase() + rawName.slice(1);
+  const hour = Number(new Intl.DateTimeFormat("pt-BR", { timeZone: "America/Sao_Paulo", hour: "2-digit", hour12: false }).format(new Date()));
+  const greeting = hour < 12 ? "Bom dia" : hour < 18 ? "Boa tarde" : "Boa noite";
+
+  const missions: Array<{ title: string; detail: string; href: string }> = [];
+  if (dueReviews[0]) missions.push({ title: `Revisar ${dueReviews[0].topic}`, detail: "4 min", href: `/estudar?topico=${dueReviews[0].review.topicId}&sessao=1` });
+  if (nextLessonRow) missions.push({ title: nextLessonRow.lesson.title, detail: "8 min", href: `/aulas/${nextLessonRow.lesson.id}` });
+  if (nextTopic && missions.length < 3) missions.push({ title: "Teste rápido", detail: "3 min", href: `/estudar?topico=${nextTopic.id}&sessao=1` });
+  if (!missions.length) missions.push({ title: "Escolher a próxima trilha", detail: "2 min", href: "/disciplinas" });
+  const mainAction = missions[0];
+  const dailyGoal = Math.min(completedToday, 3);
+
+  return <div className="today-layout">
+    <section className="min-w-0">
+      <header className="today-heading"><div><p className="muted text-sm">{greeting}, {studentName}</p><h1 className="page-title mt-1">O que fazer agora?</h1></div><span className="streak-pill"><Flame size={17} fill="currentColor"/>{rhythm.streak} dias</span></header>
+      <section className="mission-card cyber-grid">
+        <div className="mission-kicker"><Target size={16}/>Sua missão de hoje</div>
+        <div className="mission-list">{missions.map((mission, index) => <Link key={`${mission.title}-${index}`} href={mission.href} className="mission-item"><span className={`mission-number ${index === 0 ? "mission-current" : ""}`}>{index + 1}</span><span className="min-w-0 flex-1"><strong>{mission.title}</strong><small>{index === 0 ? "Próximo passo" : "Depois"}</small></span><span className="mission-time">{mission.detail}</span></Link>)}</div>
+        <Link className="btn btn-primary mt-6 w-full" href={mainAction.href}><Play size={18} fill="currentColor"/>Começar</Link>
+      </section>
+      <section className="daily-goal" aria-label={`Meta diária: ${dailyGoal} de 3 atividades`}><div><strong>Meta diária</strong><p className="muted text-xs">Três passos curtos</p></div><div className="goal-dots" aria-hidden="true">{[0, 1, 2].map((index) => <span key={index} className={index < dailyGoal ? "goal-dot-filled" : ""}/>)}</div></section>
+    </section>
+    <aside className="today-rail">
+      <section className="today-note"><p className="label">Próximo estudo</p><strong>{nextLessonRow?.lesson.title || nextTopic?.name || "Monte sua primeira trilha"}</strong><p className="muted mt-1 text-sm">{nextLessonRow?.unit.title || activeDisciplines[0]?.name || "CyberStudy"}</p><Link href="/disciplinas" className="mt-4 inline-flex items-center gap-2 text-sm font-bold text-[var(--brand)]">Ver trilha <ArrowRight size={15}/></Link></section>
+      <section className="today-note"><p className="label">Próxima prova</p>{nextExam ? <><strong>{nextExam.exam.name}</strong><p className="muted mt-2 flex items-center gap-2 text-sm"><CalendarDays size={15}/>{new Date(`${nextExam.exam.examDate}T12:00:00`).toLocaleDateString("pt-BR")}</p></> : <p className="muted text-sm">Nenhuma prova cadastrada.</p>}</section>
+    </aside>
   </div>;
 }

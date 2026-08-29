@@ -29,7 +29,8 @@ export function verifySession(token?: string) {
   if (!valid) return false;
   try {
     const data = JSON.parse(Buffer.from(payload, "base64url").toString()) as { email: string; exp: number };
-    return data.email === process.env.ADMIN_EMAIL && data.exp > Date.now();
+    const expectedEmail = (process.env.ADMIN_EMAIL || "").trim().toLowerCase();
+    return data.email.trim().toLowerCase() === expectedEmail && data.exp > Date.now();
   } catch {
     return false;
   }
