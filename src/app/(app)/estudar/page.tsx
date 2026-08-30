@@ -1,5 +1,4 @@
 import Link from "next/link";
-import { redirect } from "next/navigation";
 import { PilotEntry } from "@/components/pilot-entry";
 import { BookOpenCheck, Brain, Check, CheckCircle2, ChevronRight, CircleHelp, Flame, FlaskConical, Lightbulb, MessageCircleQuestion, Play, RotateCcw, Sparkles } from "lucide-react";
 import { and, asc, desc, eq } from "drizzle-orm";
@@ -15,7 +14,6 @@ type StudyQuery = { topico?: string; dificuldade?: string; quiz?: string; tentat
 
 export default async function StudyPage({ searchParams }: { searchParams: Promise<StudyQuery> }) {
   const query = await searchParams;
-  if (query.sessao === "1" && query.topico && !query.dificuldade && !query.quiz) redirect(`/estudar/iniciar?topico=${encodeURIComponent(query.topico)}`);
   const db = getDb();
   const [disciplineRows, topicRows, lessonRows, lessonAttemptRows] = await Promise.all([
     db.select().from(disciplines).where(eq(disciplines.status, "ATIVA")),
@@ -57,7 +55,7 @@ export default async function StudyPage({ searchParams }: { searchParams: Promis
     rhythm = learningRhythm(recentSessions.map((session) => session.createdAt));
   }
 
-  const focusTutor = (query.foco === "1" || query.guiada === "1") && Boolean(activeDifficulty);
+  const focusTutor = query.foco === "1" && Boolean(activeDifficulty);
   const focusMode = focusTutor || Boolean(activeQuiz && !attempt);
   const returnTo = query.voltar?.startsWith("/") && !query.voltar.startsWith("//") ? query.voltar : "";
 
@@ -79,6 +77,7 @@ export default async function StudyPage({ searchParams }: { searchParams: Promis
     </section>}
 
     {activeDifficulty && <section className="space-y-4">
+      {query.guiada === "1" && <div className="card p-4"><div className="mb-3 flex items-center justify-between text-xs font-bold"><span>SESSÃO GUIADA</span><span className="muted">Explicação e compreensão</span></div><div className="progress"><span style={{ width: "65%" }}/></div></div>}
       <div className="grid gap-5 lg:grid-cols-[minmax(0,1fr)_300px]">
         <TutorChat difficultyId={activeDifficulty.id} guided={query.guiada === "1"} focus={focusTutor} returnTo={returnTo} messages={messages.map(({ id, role, mode, content }) => ({ id, role, mode, content }))}/>
         <aside className="space-y-4">

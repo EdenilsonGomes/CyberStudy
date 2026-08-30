@@ -1,18 +1,17 @@
 import Link from "next/link";
 import { ArrowLeft, CheckCircle2, RotateCcw, ShieldAlert } from "lucide-react";
 import { asc, eq } from "drizzle-orm";
-import { notFound, redirect } from "next/navigation";
+import { notFound } from "next/navigation";
 import { getDb } from "@/db";
 import { disciplines, learningUnits, lessonAttempts, microLessons, topics } from "@/db/schema";
 import { LessonRunner } from "@/components/lesson-runner";
 
-export default async function LessonPage({ params, searchParams }: { params: Promise<{ id: string }>; searchParams: Promise<{ tentativa?: string; legado?: string }> }) {
+export default async function LessonPage({ params, searchParams }: { params: Promise<{ id: string }>; searchParams: Promise<{ tentativa?: string }> }) {
   const { id } = await params;
   const query = await searchParams;
   const db = getDb();
   const [row] = await db.select({ lesson: microLessons, unit: learningUnits, discipline: disciplines.name, topic: topics.name }).from(microLessons).innerJoin(learningUnits, eq(microLessons.unitId, learningUnits.id)).innerJoin(disciplines, eq(microLessons.disciplineId, disciplines.id)).leftJoin(topics, eq(microLessons.topicId, topics.id)).where(eq(microLessons.id, id)).limit(1);
   if (!row) notFound();
-  if (!query.tentativa && query.legado !== "1") redirect(`/estudar/iniciar?aula=${id}`);
   const siblings = await db.select().from(microLessons).where(eq(microLessons.unitId, row.lesson.unitId)).orderBy(asc(microLessons.position));
   const currentIndex = siblings.findIndex((lesson) => lesson.id === id);
   const previousLesson = siblings[currentIndex - 1];

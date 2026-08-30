@@ -1,21 +1,5 @@
 @import "tailwindcss";
 
-/* The same focus shell on phone and desktop: no accidental primary navigation. */
-.app-shell:has(.lesson-focus),.app-shell:has(.study-focus){display:block}
-.app-shell:has(.lesson-focus) .app-sidebar,.app-shell:has(.study-focus) .app-sidebar{display:none}
-.scenario-panels{display:grid;grid-template-columns:repeat(auto-fit,minmax(min(100%,150px),1fr));gap:10px}
-.scenario-panels>div{min-width:0;padding:18px;border:1px solid var(--line);border-bottom:4px solid var(--brand);border-radius:16px;background:var(--surface-2);overflow-wrap:anywhere}
-.scenario-panels span{display:block;font-size:.75rem;color:var(--muted);margin-bottom:8px}
-.scenario-panels strong{font-size:1rem}
-.interactive-lesson .order-slots,.interactive-lesson .order-bank{grid-template-columns:repeat(2,minmax(0,1fr))}
-.interactive-lesson .order-slots button,.interactive-lesson .order-bank .btn{font-size:.95rem;padding:12px;overflow-wrap:anywhere}
-.interactive-lesson .lesson-option>span,.interactive-lesson .lab-body>*{min-width:0;overflow-wrap:anywhere}
-.interactive-lesson .lesson-option svg{flex-shrink:0}
-.study-exit-dialog{position:fixed;inset:0;margin:auto;width:min(440px,calc(100% - 32px));max-height:calc(100dvh - 32px);overflow:auto;padding:24px;border:1px solid var(--line);border-radius:20px;background:var(--surface);color:var(--ink)}
-.study-exit-dialog::backdrop{background:rgb(0 0 0 / .65)}
-.interactive-lesson select{font-size:16px;max-width:100%}
-@media(max-width:480px){.interactive-lesson .match-row{grid-template-columns:minmax(0,1fr)}.interactive-lesson .match-row>span[aria-hidden]{display:none}}
-
 /* Interactive pilot: the visual is the activity, never an illustration above a paragraph. */
 .interactive-lesson{max-width:760px;margin-inline:auto}
 .lab-body{display:grid;gap:20px;padding:28px;min-width:0}
