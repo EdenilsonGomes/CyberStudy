@@ -2,7 +2,7 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import { parseStudyLesson, adaptStudyLesson, diagnosticLevels } from "../src/lib/study-contract.ts";
-import { parseGeneratedStudy, studyGenerationSchema } from "../src/lib/study-generation.ts";
+import { parseGeneratedStudy, studyEvidence, studyGenerationSchema } from "../src/lib/study-generation.ts";
 import { initialLessonState, transition, publicLesson, feedbackFor, summarizeLesson } from "../src/lib/interactive-lesson.ts";
 
 const source = { id: "source", title: "Material didático", concept: "Observação e registro", content: "Primeiro observe os dados apresentados. Depois registre os dados para consultar posteriormente. Esse registro permite comparar observações." };
@@ -24,7 +24,7 @@ test("provider schema requires common alternatives and rejects extra object fiel
   for (const variant of variants) {
     assert.equal(variant.additionalProperties, false);
     assert.deepEqual(variant.required, Object.keys(variant.properties));
-    assert.deepEqual(variant.properties.sourceId.enum, [source.id]);
+    assert.deepEqual(variant.properties.evidenceId.enum, studyEvidence([source]).map(excerpt => excerpt.id));
   }
   for (const variant of variants.filter(v => v.properties.type.enum[0] !== "order")) {
     assert.ok(variant.required.includes("options"));
@@ -33,9 +33,9 @@ test("provider schema requires common alternatives and rejects extra object fiel
     assert.equal(variant.properties.options.maxItems, 4);
   }
   const diagnostic = studyGenerationSchema([source], true);
-  assert.equal(diagnostic.properties.steps.minItems, 2);
-  assert.equal(diagnostic.properties.steps.items.anyOf.length, 1);
-  const scenario = diagnostic.properties.steps.items.anyOf[0];
+  assert.equal(diagnostic.properties.concepts.properties.concept_1.minItems, 2);
+  assert.deepEqual(diagnostic.properties.concepts.required, ["concept_1"]);
+  const scenario = diagnostic.properties.concepts.properties.concept_1.items;
   assert.deepEqual(scenario.properties.correctOption.enum, [0, 1, 2, 3]);
   assert.equal("expected" in scenario.properties, false);
 });
@@ -57,6 +57,36 @@ test("diagnostic answer keys reference options by index and stay server-only", (
     const broken = structuredClone(raw); broken.steps[0].correctOption = invalid;
     assert.throws(() => parseGeneratedStudy(broken, [source], true), /INVALID_ANSWER_KEY/);
   }
+});
+test("evidence references resolve to literal source text, never a model-written quote", () => {
+  const longSource = { ...source, content: source.content.repeat(20) };
+  const evidence = studyEvidence([longSource]);
+  assert.ok(evidence.length > 2);
+  for (const excerpt of evidence) {
+    assert.ok(excerpt.quote.length >= 20 && excerpt.quote.length <= 450);
+    assert.ok(longSource.content.includes(excerpt.quote));
+  }
+  const raw = diagnosisRaw();
+  raw.steps = raw.steps.map(step => ({ ...step, evidenceId: evidence[0].id, quote: "Not copied by the model", sourceId: "wrong" }));
+  const lesson = parseGeneratedStudy(raw, [longSource], true);
+  assert.equal(lesson.steps[0].source.quote, evidence[0].quote);
+  assert.equal(lesson.steps[0].concept, source.concept);
+  assert.equal("source" in publicLesson(lesson).steps[0], false);
+  raw.steps[0].evidenceId = "does-not-exist";
+  assert.throws(() => parseGeneratedStudy(raw, [longSource], true), /UNSUPPORTED_SOURCE/);
+});
+test("diagnostic groups keep exactly two probes and evidence from each concept", () => {
+  const other = { ...source, id: "other", concept: "Outro conceito" };
+  const raw = { title: "Diagnóstico", objective: "Encontrar o ponto de partida", concepts: {
+    concept_1: [question(1), question(2)].map(step => ({ ...step, evidenceId: "s0q0" })),
+    concept_2: [question(3), question(4)].map(step => ({ ...step, evidenceId: "s1q0" })),
+  } };
+  const lesson = parseGeneratedStudy(raw, [source, other], true);
+  assert.deepEqual(lesson.steps.map(step => step.concept), [source.concept, source.concept, other.concept, other.concept]);
+  raw.concepts.concept_2[0].evidenceId = "s0q0";
+  assert.throws(() => parseGeneratedStudy(raw, [source, other], true), /UNSUPPORTED_SOURCE/);
+  delete raw.concepts.concept_2;
+  assert.throws(() => parseGeneratedStudy(raw, [source, other], true), /DIAGNOSIS_NEEDS_TWO_PROBES/);
 });
 test("matching indices map exactly to alternatives; invalid references are rejected", () => {
   const raw = studyRaw();

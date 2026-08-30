@@ -11,6 +11,7 @@ Os testes do executor usam um banco simulado para verificar ordem, rollback e au
 ## Implementado
 
 - Correção r5 para `INVALID_ANSWER_KEY`: novas questões e associações referenciam alternativas por índice limitado no schema. O servidor resolve o texto canônico e valida o gabarito, sem expor índices corretos ao cliente. Pacotes existentes continuam no contrato anterior, sem migração ou perda de progresso.
+- Correção r6 para `UNSUPPORTED_SOURCE`: a IA seleciona um ID de trecho fornecido, e o servidor resolve fonte/citação a partir do material original. A validação literal permanece; referências inexistentes são rejeitadas. A citação continua sendo evidência para revisão humana, não prova automática da correção pedagógica.
 
 - Hoje → Começar, Trilha → aula e antigas URLs `estudar?topico=...&sessao=1` usam o mesmo motor do piloto. O piloto autoral continua disponível.
 - Conteúdo estruturado gerado sob demanda a partir dos trechos já cadastrados; decisão em cenário, associação e ordenação reais. Contrato validado, limites de texto, gabaritos válidos e citação literal existente. Falhas não viram perguntas genéricas.
