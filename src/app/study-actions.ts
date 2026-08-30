@@ -10,6 +10,7 @@ import { generateInteractiveStudy } from "@/lib/ai";
 import { activeStudy, levelFor, resolveStudyTarget, sessionLesson } from "@/lib/study";
 import { feedbackFor, hintFor, initialLessonState, summarizeLesson, transition, type LessonCommand } from "@/lib/interactive-lesson";
 import { uuidPattern } from "@/lib/study-contract";
+import { generationErrorCode } from "@/lib/generation-error";
 
 export async function startMaterialStudy(form: FormData) {
   await requireAuth();
@@ -39,7 +40,7 @@ export async function startMaterialStudy(form: FormData) {
     } catch (error) {
       console.error("Falha ao preparar aula estruturada", error instanceof Error ? error.message : "unknown");
       await db.update(studyPackages).set({ error: "generation", updatedAt: new Date() }).where(eq(studyPackages.id, pack.id));
-      fail("geracao");
+      fail(`geracao_${generationErrorCode(error)}`);
     }
   }
   const level = target.diagnostic || value("base") === "1" ? "base" : await levelFor(target);
