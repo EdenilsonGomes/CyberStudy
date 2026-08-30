@@ -14,12 +14,13 @@ export function studyGenerationSchema(sources: StudySource[], diagnostic: boolea
     explanation: string(450), misconception: string(450),
     ...(!diagnostic ? { brief: string(400), help: object(Object.fromEntries(["explanation", "purpose", "term", "example", "lost"].map(reason => [reason, string(260)]))) } : {}),
   };
-  const options = array(string(180), 2, 4);
+  const options = array(string(180), 4, 4);
+  const optionIndex: Schema = { type: "integer", enum: [0, 1, 2, 3] };
   const items = array(object({ id, label: string(160) }), 2, 4);
-  const scenario = object({ ...common, type: { type: "string", enum: ["scenario"] }, options, expected: string(180), scene: array(object({ label: string(60), value: string(160) }), 0, 3) });
+  const scenario = object({ ...common, type: { type: "string", enum: ["scenario"] }, options, correctOption: optionIndex, scene: array(object({ label: string(60), value: string(160) }), 0, 3) });
   const variants = diagnostic ? [scenario] : [
     scenario,
-    object({ ...common, type: { type: "string", enum: ["match"] }, items, options, expected: array(object({ itemId: id, option: string(180) }), 2, 4) }),
+    object({ ...common, type: { type: "string", enum: ["match"] }, items, options, expected: array(object({ itemId: id, optionIndex }), 2, 4) }),
     object({ ...common, type: { type: "string", enum: ["order"] }, items, expected: array(id, 2, 4) }),
   ];
   const count = diagnostic ? sources.length * 2 : 6;
@@ -27,12 +28,20 @@ export function studyGenerationSchema(sources: StudySource[], diagnostic: boolea
 }
 
 export function parseGeneratedStudy(value: unknown, sources: StudySource[], diagnostic: boolean) {
+  const optionAt = (options: unknown, index: unknown) => {
+    if (!Array.isArray(options) || !Number.isInteger(index) || Number(index) < 0 || Number(index) >= options.length || typeof options[Number(index)] !== "string") throw new Error("INVALID_ANSWER_KEY");
+    return options[Number(index)].trim();
+  };
   // Strict schemas cannot use arbitrary object keys; convert explicit matching pairs
   // to the existing runner contract. No change to saved packages or old sessions.
   if (value && typeof value === "object" && "steps" in value && Array.isArray(value.steps)) {
     value = { ...value, steps: value.steps.map((step: Record<string, unknown>) => {
+      if (step?.type === "scenario" && "correctOption" in step) {
+        const { correctOption, ...activity } = step;
+        return { ...activity, expected: optionAt(step.options, correctOption) };
+      }
       if (!step || step.type !== "match" || !Array.isArray(step.expected)) return step;
-      const pairs = step.expected;
+      const pairs = step.expected.map(pair => pair && typeof pair === "object" && "optionIndex" in pair ? { itemId: pair.itemId, option: optionAt(step.options, pair.optionIndex) } : pair);
       if (pairs.some(pair => !pair || typeof pair.itemId !== "string" || typeof pair.option !== "string") || new Set(pairs.map(pair => pair.itemId)).size !== pairs.length) throw new Error("INVALID_ANSWER_KEY");
       return { ...step, expected: Object.fromEntries(pairs.map(pair => [pair.itemId, pair.option])) };
     }) };

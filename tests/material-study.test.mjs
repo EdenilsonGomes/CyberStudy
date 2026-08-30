@@ -29,12 +29,41 @@ test("provider schema requires common alternatives and rejects extra object fiel
   for (const variant of variants.filter(v => v.properties.type.enum[0] !== "order")) {
     assert.ok(variant.required.includes("options"));
     assert.equal(variant.properties.options.type, "array");
-    assert.equal(variant.properties.options.minItems, 2);
+    assert.equal(variant.properties.options.minItems, 4);
     assert.equal(variant.properties.options.maxItems, 4);
   }
   const diagnostic = studyGenerationSchema([source], true);
   assert.equal(diagnostic.properties.steps.minItems, 2);
   assert.equal(diagnostic.properties.steps.items.anyOf.length, 1);
+  const scenario = diagnostic.properties.steps.items.anyOf[0];
+  assert.deepEqual(scenario.properties.correctOption.enum, [0, 1, 2, 3]);
+  assert.equal("expected" in scenario.properties, false);
+});
+test("diagnostic answer keys reference options by index and stay server-only", () => {
+  const raw = diagnosisRaw();
+  raw.steps = raw.steps.map(step => {
+    const { expected, ...rest } = step;
+    void expected;
+    return { ...rest, options: ["Ignorar", " Registrar ", "Apagar", "Adivinhar"], correctOption: 1 };
+  });
+  const lesson = parseGeneratedStudy(raw, [source], true);
+  assert.equal(lesson.steps[0].expected, "Registrar");
+  assert.equal(lesson.steps[0].options[1], "Registrar");
+  for (const step of publicLesson(lesson).steps) {
+    assert.equal("correctOption" in step, false);
+    assert.equal("expected" in step, false);
+  }
+  for (const invalid of [-1, 4, 1.5, "1", null]) {
+    const broken = structuredClone(raw); broken.steps[0].correctOption = invalid;
+    assert.throws(() => parseGeneratedStudy(broken, [source], true), /INVALID_ANSWER_KEY/);
+  }
+});
+test("matching indices map exactly to alternatives; invalid references are rejected", () => {
+  const raw = studyRaw();
+  raw.steps[3] = { ...question(4), type: "match", items: [{ id: "observe", label: "Observação" }, { id: "record", label: "Registro" }], options: [" Coletar ", "Guardar", "Descartar", "Inventar"], expected: [{ itemId: "observe", optionIndex: 0 }, { itemId: "record", optionIndex: 1 }] };
+  assert.deepEqual(parseGeneratedStudy(raw, [source], false).steps[3].expected, { observe: "Coletar", record: "Guardar" });
+  raw.steps[3].expected[1].optionIndex = 4;
+  assert.throws(() => parseGeneratedStudy(raw, [source], false), /INVALID_ANSWER_KEY/);
 });
 test("generated matching pairs adapt to the existing engine without weakening validation", () => {
   const raw = studyRaw();

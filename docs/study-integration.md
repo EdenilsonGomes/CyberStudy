@@ -10,6 +10,8 @@ Os testes do executor usam um banco simulado para verificar ordem, rollback e au
 
 ## Implementado
 
+- Correção r5 para `INVALID_ANSWER_KEY`: novas questões e associações referenciam alternativas por índice limitado no schema. O servidor resolve o texto canônico e valida o gabarito, sem expor índices corretos ao cliente. Pacotes existentes continuam no contrato anterior, sem migração ou perda de progresso.
+
 - Hoje → Começar, Trilha → aula e antigas URLs `estudar?topico=...&sessao=1` usam o mesmo motor do piloto. O piloto autoral continua disponível.
 - Conteúdo estruturado gerado sob demanda a partir dos trechos já cadastrados; decisão em cenário, associação e ordenação reais. Contrato validado, limites de texto, gabaritos válidos e citação literal existente. Falhas não viram perguntas genéricas.
 - Cache por conteúdo/fonte/versão, reserva de geração e chave única de sessão ativa. Nenhuma geração em GET ou retomada. As definições concluídas permanecem imutáveis para preservar sessões antigas.
