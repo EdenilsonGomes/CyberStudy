@@ -8,7 +8,7 @@ import {
   timestamp,
   uuid,
 } from "drizzle-orm/pg-core";
-import type { LessonState } from "../lib/interactive-lesson";
+import type { AuthoredLesson, LessonState } from "../lib/interactive-lesson";
 
 export type LessonCheck = {
   id: string;
@@ -54,7 +54,22 @@ export const interactiveSessions = pgTable("interactive_sessions", {
   lessonKey: text("lesson_key").notNull(),
   contentVersion: integer("content_version").notNull(),
   state: jsonb("state").$type<LessonState>().notNull(),
+  packageId: uuid("package_id").references(() => studyPackages.id, { onDelete: "set null" }),
+  activeKey: text("active_key").unique(),
+  level: text("level").default("base").notNull(),
   completedAt: timestamp("completed_at", { withTimezone: true }),
+  ...timestamps,
+});
+
+export const studyPackages = pgTable("study_packages", {
+  id: uuid("id").defaultRandom().primaryKey(),
+  cacheKey: text("cache_key").notNull().unique(),
+  kind: text("kind").notNull(),
+  disciplineId: uuid("discipline_id").references(() => disciplines.id, { onDelete: "cascade" }).notNull(),
+  topicId: uuid("topic_id").references(() => topics.id, { onDelete: "set null" }),
+  lessonId: uuid("lesson_id").references(() => microLessons.id, { onDelete: "set null" }),
+  content: jsonb("content").$type<AuthoredLesson>(),
+  error: text("error"),
   ...timestamps,
 });
 

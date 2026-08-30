@@ -1,4 +1,5 @@
 import Link from "next/link";
+import { MaterialStudyProgress } from "@/components/material-study-progress";
 import { PilotEntry } from "@/components/pilot-entry";
 import { PilotProgress } from "@/components/pilot-progress";
 import { AlertCircle, ArrowRight, CalendarCheck, Check, Dumbbell, RotateCcw, Zap } from "lucide-react";
@@ -21,7 +22,7 @@ export default async function ReviewsPage() {
   return <div className="mx-auto max-w-4xl space-y-6">
     <header><p className="eyebrow">Reforce antes de esquecer</p><h1 className="page-title">Praticar</h1><p className="muted mt-2 text-sm">Revisões, erros recentes e sessões curtas em um só lugar.</p></header>
     <PilotEntry/>
-    <PilotProgress/>
+    <MaterialStudyProgress practice/><PilotProgress/>
     {priority ? <section className="practice-hero card cyber-grid"><span className="metric-icon"><Dumbbell size={21}/></span><div className="min-w-0 flex-1"><p className="eyebrow">Sua prática de agora</p><h2 className="text-xl font-black">{priority.topic}</h2><p className="muted mt-1 text-sm">{priority.discipline} · cerca de 5 minutos</p></div><Link className="btn btn-primary w-full sm:w-auto" href={`/estudar?topico=${priority.review.topicId}&sessao=1`}><Zap size={17} fill="currentColor"/>Começar</Link></section> : mistakes[0] ? <section className="practice-hero card"><span className="metric-icon"><AlertCircle size={21}/></span><div className="min-w-0 flex-1"><p className="eyebrow">Ponto fraco recente</p><h2 className="text-xl font-black">{mistakes[0].topic}</h2><p className="muted mt-1 text-sm">Refaça o conceito em que você errou.</p></div><Link className="btn btn-primary w-full sm:w-auto" href={`/estudar?topico=${mistakes[0].quiz.topicId}&sessao=1`}>Praticar agora</Link></section> : <div className="empty"><CalendarCheck className="mx-auto mb-3"/>Tudo em dia. Continue a trilha para liberar novas práticas.</div>}
 
     {mistakes.length > 0 && <section><div className="mb-3 flex items-center justify-between"><div><p className="eyebrow">Pontos fracos</p><h2 className="section-title">Questões que merecem reforço</h2></div><span className="badge">{mistakes.length}</span></div><div className="grid gap-3 sm:grid-cols-2">{mistakes.map(({ attempt, quiz, topic, discipline }) => <Link key={attempt.id} href={`/estudar?topico=${quiz.topicId}&sessao=1`} className="practice-item"><div className="min-w-0"><strong className="block truncate">{topic}</strong><p className="muted mt-1 truncate text-xs">{discipline} · {attempt.weaknesses[0]}</p></div><ArrowRight className="shrink-0" size={18}/></Link>)}</div></section>}
