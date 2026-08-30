@@ -1,4 +1,5 @@
 import Link from "next/link";
+import { PilotEntry } from "@/components/pilot-entry";
 import { ArrowRight, CalendarDays, Flame, Play, Target } from "lucide-react";
 import { and, asc, desc, eq, gte, lte } from "drizzle-orm";
 import { getDb } from "@/db";
@@ -49,6 +50,7 @@ export default async function DashboardPage() {
         <Link className="btn btn-primary mt-6 w-full" href={mainAction.href}><Play size={18} fill="currentColor"/>Começar</Link>
       </section>
       <section className="daily-goal" aria-label={`Meta diária: ${dailyGoal} de 3 atividades`}><div><strong>Meta diária</strong><p className="muted text-xs">Três passos curtos</p></div><div className="goal-dots" aria-hidden="true">{[0, 1, 2].map((index) => <span key={index} className={index < dailyGoal ? "goal-dot-filled" : ""}/>)}</div></section>
+      <PilotEntry/>
     </section>
     <aside className="today-rail">
       <section className="today-note"><p className="label">Próximo estudo</p><strong>{nextLessonRow?.lesson.title || nextTopic?.name || "Monte sua primeira trilha"}</strong><p className="muted mt-1 text-sm">{nextLessonRow?.unit.title || activeDisciplines[0]?.name || "CyberStudy"}</p><Link href="/disciplinas" className="mt-4 inline-flex items-center gap-2 text-sm font-bold text-[var(--brand)]">Ver trilha <ArrowRight size={15}/></Link></section>

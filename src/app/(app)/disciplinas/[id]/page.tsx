@@ -1,4 +1,5 @@
 import Link from "next/link";
+import { PilotEntry } from "@/components/pilot-entry";
 import { BookOpen, Check, Dumbbell, FileText, LockKeyhole, Play, Plus, RotateCcw, Settings2 } from "lucide-react";
 import { asc, desc, eq } from "drizzle-orm";
 import { notFound } from "next/navigation";
@@ -31,6 +32,7 @@ export default async function DisciplinePage({ params, searchParams }: { params:
   const topicById = new Map(topicRows.map((topic) => [topic.id, topic]));
 
   return <div className="mx-auto max-w-5xl space-y-6">
+    <PilotEntry/>
     <div><p className="eyebrow">Trilha</p><div className="no-scrollbar mt-2 flex gap-2 overflow-x-auto pb-1">{disciplineChoices.map((item) => <Link key={item.id} href={`/disciplinas/${item.id}`} aria-current={item.id === id ? "page" : undefined} className={`trail-chip ${item.id === id ? "trail-chip-active" : ""}`}>{item.name}</Link>)}</div></div>
     <header className="card overflow-hidden"><div className="h-2" style={{ background: discipline.color }}/><div className="p-5 md:p-8"><span className="badge mb-3">{discipline.semester}</span><h1 className="page-title">{discipline.name}</h1><p className="muted mt-2 max-w-2xl">{discipline.description || "Avance um assunto por vez."}</p><div className="mt-6"><div className="mb-2 flex justify-between text-sm"><span>{completed} de {total} etapas concluídas</span><strong>{progress}%</strong></div><div className="progress"><span style={{ width: `${progress}%`, background: discipline.color }}/></div></div>{nextLesson ? <Link className="btn btn-primary mt-6 w-full md:w-auto" href={`/aulas/${nextLesson.id}`}><Play size={18} fill="currentColor"/>Continuar trilha</Link> : nextTopic && <Link className="btn btn-primary mt-6 w-full md:w-auto" href={`/estudar?topico=${nextTopic.id}&sessao=1`}><Play size={18} fill="currentColor"/>Continuar trilha</Link>}</div></header>
 

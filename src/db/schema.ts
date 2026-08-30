@@ -8,6 +8,7 @@ import {
   timestamp,
   uuid,
 } from "drizzle-orm/pg-core";
+import type { LessonState } from "../lib/interactive-lesson";
 
 export type LessonCheck = {
   id: string;
@@ -47,6 +48,15 @@ const timestamps = {
   createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
   updatedAt: timestamp("updated_at", { withTimezone: true }).defaultNow().notNull(),
 };
+
+export const interactiveSessions = pgTable("interactive_sessions", {
+  id: uuid("id").defaultRandom().primaryKey(),
+  lessonKey: text("lesson_key").notNull(),
+  contentVersion: integer("content_version").notNull(),
+  state: jsonb("state").$type<LessonState>().notNull(),
+  completedAt: timestamp("completed_at", { withTimezone: true }),
+  ...timestamps,
+});
 
 export const disciplines = pgTable("disciplines", {
   id: uuid("id").defaultRandom().primaryKey(),

@@ -1,12 +1,13 @@
 "use client";
 
-import Link from "next/link";
 import { useMemo, useState } from "react";
 import { ArrowLeft, ArrowRight, Brain, Check, HelpCircle, RotateCcw, X } from "lucide-react";
 import { completeMicroLesson, createDifficulty } from "@/app/actions";
 import type { LessonContent, LessonLearningCard } from "@/db/schema";
 import { SubmitButton } from "@/components/submit-button";
 import { LessonLearningCardView } from "@/components/lesson-learning-card";
+import { InteractiveLessonRunner, type InteractiveRunnerProps } from "./interactive-lesson-runner";
+import { LessonProgress } from "./lesson-progress";
 
 function splitIntoShortBlocks(text: string, limit = 420) {
   const paragraphs = text.split(/\n{2,}/).map((part) => part.trim()).filter(Boolean);
@@ -52,7 +53,11 @@ type LessonRunnerProps = {
   content: LessonContent;
 };
 
-export function LessonRunner({ lessonId, disciplineId, topicId, title, objective, contextLabel, backHref, content }: LessonRunnerProps) {
+export function LessonRunner(props: LessonRunnerProps | { interactive: InteractiveRunnerProps }) {
+  return "interactive" in props ? <InteractiveLessonRunner {...props.interactive}/> : <LegacyLessonRunner {...props}/>;
+}
+
+function LegacyLessonRunner({ lessonId, disciplineId, topicId, title, objective, contextLabel, backHref, content }: LessonRunnerProps) {
   const contentSteps = useMemo(() => {
     const cards = content.cards?.filter((card) => card.title?.trim() && card.body?.trim()).map((card, index) => ({ ...card, id: card.id || `card-${index + 1}` }));
     return cards?.length ? cards : legacyCards(content, title, objective);
@@ -77,7 +82,7 @@ export function LessonRunner({ lessonId, disciplineId, topicId, title, objective
   return <form action={completeMicroLesson} className="lesson-card card overflow-hidden">
     <input type="hidden" name="lessonId" value={lessonId}/><input type="hidden" name="disciplineId" value={disciplineId}/><input type="hidden" name="topicId" value={topicId || ""}/><input type="hidden" name="level" value="NAO_ENTENDI"/><input type="hidden" name="mode" value="EXPLICAR"/><input type="hidden" name="focus" value="1"/><input type="hidden" name="returnTo" value={`/aulas/${lessonId}`}/><input type="hidden" name="report" value={`Estou na microaula "${title}" e não entendi esta parte: ${currentContext}`}/>
     {content.checks.map((check) => <input key={check.id} type="hidden" name={`answer_${check.id}`} value={answers[check.id] || ""}/>) }
-    <div className="lesson-progress-head"><Link href={backHref} aria-label="Voltar para a trilha" className="focus-icon-button"><ArrowLeft size={20}/></Link><div className="min-w-0 flex-1"><div className="mb-2 flex items-center justify-between gap-3 text-xs font-bold"><span className="truncate">{contextLabel}</span><span className="muted shrink-0">{step + 1} / {totalSteps}</span></div><div className="progress"><span style={{ width: `${((step + 1) / totalSteps) * 100}%` }}/></div></div></div>
+    <LessonProgress backHref={backHref} label={contextLabel} current={step + 1} total={totalSteps} completed={step}/>
     <div className="lesson-body">
       {showHelp ? <section><button type="button" className="focus-back mb-6" onClick={() => setShowHelp(false)}><ArrowLeft size={17}/>Voltar para a aula</button><span className="mb-4 grid h-12 w-12 place-items-center rounded-xl bg-[var(--accent)] text-[var(--brand)]"><HelpCircle size={24}/></span><p className="eyebrow">Tutor com contexto</p><h2 className="text-2xl font-black">O que aconteceu?</h2><p className="muted mt-2 text-sm">Escolha o que mais descreve sua dúvida. O Cyber já receberá esta etapa da aula.</p><div className="mt-6 grid gap-3">{["Não entendi a explicação", "Não sei por que isso importa", "Não entendi um termo", "Quero um exemplo", "Estou completamente perdido"].map((reason) => <button key={reason} formAction={createDifficulty} name="helpReason" value={reason} className="lesson-option"><span>{reason}</span><ArrowRight size={17}/></button>)}</div></section> : <>
         {lessonStep && <section><p className="eyebrow mb-2">{title}</p><LessonLearningCardView card={lessonStep} selectedItem={selectedItem} onSelectItem={setSelectedItem}/><div className="learning-card-dots" aria-label={`Card ${step + 1} de ${contentSteps.length}`}>{contentSteps.map((card, index) => <span key={card.id} className={index === step ? "learning-card-dot-active" : ""}/>)}</div><button type="button" className="btn btn-primary mt-5 w-full" onClick={advance}>{step === contentSteps.length - 1 ? "Agora quero tentar" : "Entendi"}<ArrowRight size={18}/></button></section>}

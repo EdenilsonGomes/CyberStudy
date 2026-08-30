@@ -1,4 +1,5 @@
 import Link from "next/link";
+import { PilotProgress } from "@/components/pilot-progress";
 import { AlertTriangle, BookOpenCheck, CheckCircle2, Clock3, Flame, Target } from "lucide-react";
 import { desc, eq, gte } from "drizzle-orm";
 import { getDb } from "@/db";
@@ -26,6 +27,7 @@ export default async function ProgressPage() {
   return <div className="mx-auto max-w-5xl space-y-6"><header><p className="eyebrow">Evolução que ajuda a decidir</p><h1 className="page-title">Progresso</h1></header>
     <section className="progress-summary"><div><Flame className="text-orange-400" size={20}/><strong>{rhythm.streak}</strong><span>dias estudando</span></div><div><Clock3 className="text-[var(--brand)]" size={20}/><strong>{Math.floor(minutes / 60)}h {minutes % 60}m</strong><span>últimos 7 dias</span></div><div><BookOpenCheck className="text-[var(--success)]" size={20}/><strong>{uniqueLessons.size}</strong><span>aulas praticadas</span></div><div><Target className="text-[var(--brand)]" size={20}/><strong>{accuracy}%</strong><span>média de acertos</span></div></section>
 
+    <PilotProgress/>
     <section className="card p-5 md:p-6"><h2 className="section-title mb-5">Avanço por disciplina</h2><div className="space-y-4">{disciplineRows.map((discipline) => { const own = topicRows.filter((topic) => topic.disciplineId === discipline.id); const mastery = own.length ? Math.round(own.reduce((sum, topic) => sum + topic.mastery, 0) / own.length) : 0; return <Link href={`/disciplinas/${discipline.id}`} key={discipline.id} className="block rounded-xl bg-[var(--surface-2)] p-4"><div className="mb-2 flex min-w-0 justify-between gap-3"><span className="min-w-0 truncate font-bold">{discipline.name}</span><strong>{mastery}%</strong></div><div className="progress"><span style={{ width: `${mastery}%`, background: discipline.color }}/></div></Link>; })}</div></section>
 
     <div className="grid gap-5 md:grid-cols-2"><section className="card p-5"><div className="mb-4 flex items-center gap-3"><span className="metric-icon text-[var(--success)]"><CheckCircle2 size={19}/></span><div><p className="eyebrow">Conceitos fortes</p><h2 className="section-title">Você já domina</h2></div></div>{strongTopics.length ? <div className="space-y-2">{strongTopics.map((topic) => <div key={topic.id} className="concept-row"><span className="min-w-0"><strong className="block truncate text-sm">{topic.name}</strong><small className="muted">{disciplineById.get(topic.disciplineId)}</small></span><span className="badge">{topic.mastery}%</span></div>)}</div> : <p className="muted text-sm">Continue a trilha para formar seus primeiros pontos fortes.</p>}</section>

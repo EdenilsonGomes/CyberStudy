@@ -1,4 +1,5 @@
 import Link from "next/link";
+import { PilotEntry } from "@/components/pilot-entry";
 import { BookOpenCheck, Brain, Check, CheckCircle2, ChevronRight, CircleHelp, Flame, FlaskConical, Lightbulb, MessageCircleQuestion, Play, RotateCcw, Sparkles } from "lucide-react";
 import { and, asc, desc, eq } from "drizzle-orm";
 import { getDb } from "@/db";
@@ -59,6 +60,7 @@ export default async function StudyPage({ searchParams }: { searchParams: Promis
   const returnTo = query.voltar?.startsWith("/") && !query.voltar.startsWith("//") ? query.voltar : "";
 
   return <div className={`${focusMode ? "study-focus" : ""} mx-auto max-w-5xl space-y-6`}>
+    {!activeQuiz && !focusTutor && <PilotEntry/>}
     {!activeQuiz && <header><p className="muted text-sm">{focusTutor ? selectedTopic?.name : "Sessões curtas, progresso real"}</p><h1 className="page-title">{focusTutor ? "Tire sua dúvida" : activeDifficulty ? "Tutor contextual" : "Estudar agora"}</h1></header>}
     {query.erro && <p className="rounded-xl border p-4 text-sm" style={{ borderColor: "var(--danger)", color: "var(--danger)" }}>Não foi possível concluir esta ação. Verifique a configuração da IA e tente novamente.</p>}
 
