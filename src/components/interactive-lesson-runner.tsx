@@ -116,11 +116,11 @@ export function InteractiveLessonRunner({ lesson, sessionId, initialState, initi
   };
 
   if (state.completed && summary) return <section className="lesson-card card interactive-lesson">
-    <LessonProgress backHref="/estudar" label="Piloto concluído" current={lesson.steps.length} total={lesson.steps.length} completed={lesson.steps.length}/>
+    <LessonProgress backHref="/revisoes" label="Piloto concluído" current={lesson.steps.length} total={lesson.steps.length} completed={lesson.steps.length}/>
     <div className="lab-body"><span className="lab-tag"><Check size={16}/>Progresso salvo</span><h1 tabIndex={-1} ref={titleRef} className="lab-title">Você colocou os bits para trabalhar.</h1><p className="muted">{summary.independent} de {summary.total} desafios resolvidos de primeira, sem pistas.</p>
       <div className="lab-result-stats"><div><strong>{summary.independent}</strong><span>sem ajuda</span></div><div><strong>{summary.assisted}</strong><span>com apoio ou correção</span></div><div><strong>{Math.floor(state.elapsedSeconds / 60)}:{String(state.elapsedSeconds % 60).padStart(2, "0")}</strong><span>tempo em primeiro plano</span></div></div>
       <div className="callout"><strong>{summary.reinforce.length ? "O próximo passo é reforçar" : "Você aplicou a regra em novas situações"}</strong><p className="muted mt-2">{summary.reinforce.length ? summary.reinforce.join(" · ") : "Retome outro dia para verificar o que ficou. Uma sessão não comprova domínio duradouro."}</p></div>
-      <Link href="/estudar" className="btn btn-primary w-full">Ir para Praticar <ArrowRight size={18}/></Link><Link href="/progresso" className="btn btn-ghost w-full">Ver meu progresso</Link>
+      <Link href="/revisoes" className="btn btn-primary w-full">Ir para Praticar <ArrowRight size={18}/></Link><Link href="/progresso" className="btn btn-ghost w-full">Ver meu progresso</Link>
       <details className="lab-evidence"><summary>Como foi cada atividade</summary>{summary.rows.map((row) => <div key={row.id}><strong>{row.title}</strong><p>{!row.assessment ? "Exploração guiada" : row.independent ? "Acertou de primeira, sem ajuda" : row.corrected ? "Acertou com apoio ou correção" : "Ainda precisa de reforço"}</p><small>{row.attempts} tentativa(s) · {row.hints} pista(s)</small></div>)}</details>
       <form action={startPilot}><SubmitButton pendingText="Abrindo..." className="btn btn-ghost w-full"><RotateCcw size={16}/>Praticar novamente</SubmitButton></form>
     </div></section>;

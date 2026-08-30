@@ -44,7 +44,7 @@ export async function runPilotCommand(sessionId: string, command: LessonCommand)
       return { state: next, feedback: feedbackFor(binaryPilot, next), hint: hintFor(binaryPilot, next), summary: next.completed ? summarizeLesson(binaryPilot, next) : null };
     });
     if (result.state.completed) {
-      revalidatePath("/dashboard"); revalidatePath("/estudar"); revalidatePath("/progresso"); revalidatePath("/historico");
+      revalidatePath("/dashboard"); revalidatePath("/revisoes"); revalidatePath("/estudar"); revalidatePath("/progresso"); revalidatePath("/historico");
     }
     return { ok: true as const, ...result };
   } catch (error) {
