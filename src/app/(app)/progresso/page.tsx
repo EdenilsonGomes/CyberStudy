@@ -3,20 +3,21 @@ import { MaterialStudyProgress } from "@/components/material-study-progress";
 import { PilotProgress } from "@/components/pilot-progress";
 import { AlertTriangle, BookOpenCheck, CheckCircle2, Clock3, Flame, Target } from "lucide-react";
 import { desc, eq, gte } from "drizzle-orm";
-import { getDb } from "@/db";
+import { getUserDb, owned } from "@/db/user-db";
 import { disciplines, lessonAttempts, microLessons, studySessions, topics } from "@/db/schema";
 import { learningRhythm } from "@/lib/learning";
 import { studyProgress, sessionLesson } from "@/lib/study";
 import { summarizeLesson } from "@/lib/interactive-lesson";
 
 export default async function ProgressPage() {
-  const db = getDb();
+  const { db, userId } = await getUserDb();
+
   const week = new Date(); week.setDate(week.getDate() - 7);
   const [disciplineRows, topicRows, attemptRows, sessions] = await Promise.all([
-    db.select().from(disciplines).where(eq(disciplines.status, "ATIVA")),
-    db.select().from(topics),
-    db.select({ attempt: lessonAttempts, lesson: microLessons }).from(lessonAttempts).innerJoin(microLessons, eq(lessonAttempts.lessonId, microLessons.id)).orderBy(desc(lessonAttempts.createdAt)),
-    db.select().from(studySessions).where(gte(studySessions.createdAt, week)).orderBy(desc(studySessions.createdAt)),
+    db.select().from(disciplines).where(owned(disciplines, userId, eq(disciplines.status, "ATIVA"))),
+    db.select().from(topics).where(owned(topics, userId)),
+    db.select({ attempt: lessonAttempts, lesson: microLessons }).from(lessonAttempts).innerJoin(microLessons, eq(lessonAttempts.lessonId, microLessons.id)).orderBy(desc(lessonAttempts.createdAt)).where(owned(lessonAttempts, userId)),
+    db.select().from(studySessions).where(owned(studySessions, userId, gte(studySessions.createdAt, week))).orderBy(desc(studySessions.createdAt)),
   ]);
   const rhythm = learningRhythm(sessions.map((session) => session.createdAt));
   const uniqueLessons = new Map([...attemptRows].reverse().map((row) => [row.lesson.id, row]));

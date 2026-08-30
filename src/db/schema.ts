@@ -1,4 +1,6 @@
 import {
+  boolean,
+  unique,
   date,
   integer,
   jsonb,
@@ -49,21 +51,61 @@ const timestamps = {
   updatedAt: timestamp("updated_at", { withTimezone: true }).defaultNow().notNull(),
 };
 
+export const users = pgTable("users", {
+  id: uuid("id").defaultRandom().primaryKey(),
+  email: text("email").unique(),
+  name: text("name").notNull(),
+  role: text("role").default("student").notNull(),
+  isTest: boolean("is_test").default(false).notNull(),
+  active: boolean("active").default(true).notNull(),
+  sessionVersion: integer("session_version").default(1).notNull(),
+  createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
+});
+
+export const authIdentities = pgTable("auth_identities", {
+  id: uuid("id").defaultRandom().primaryKey(),
+  userId: uuid("user_id").references(() => users.id).notNull(),
+  provider: text("provider").notNull(),
+  subject: text("subject").notNull(),
+  passwordHash: text("password_hash"),
+}, t => [unique().on(t.provider, t.subject), unique().on(t.userId, t.provider)]);
+
+export const accountTokens = pgTable("account_tokens", {
+  id: uuid("id").defaultRandom().primaryKey(),
+  tokenHash: text("token_hash").unique().notNull(),
+  kind: text("kind").notNull(),
+  email: text("email").notNull(),
+  isTest: boolean("is_test").default(false).notNull(),
+  userId: uuid("user_id").references(() => users.id),
+  createdBy: uuid("created_by").references(() => users.id).notNull(),
+  expiresAt: timestamp("expires_at", { withTimezone: true }).notNull(),
+  usedAt: timestamp("used_at", { withTimezone: true }),
+  createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
+});
+
+export const authRateLimits = pgTable("auth_rate_limits", {
+  key: text("key").primaryKey(),
+  attempts: integer("attempts").default(1).notNull(),
+  expiresAt: timestamp("expires_at", { withTimezone: true }).notNull(),
+});
+
 export const interactiveSessions = pgTable("interactive_sessions", {
+  userId: uuid("user_id").references(() => users.id).notNull(),
   id: uuid("id").defaultRandom().primaryKey(),
   lessonKey: text("lesson_key").notNull(),
   contentVersion: integer("content_version").notNull(),
   state: jsonb("state").$type<LessonState>().notNull(),
   packageId: uuid("package_id").references(() => studyPackages.id, { onDelete: "set null" }),
-  activeKey: text("active_key").unique(),
+  activeKey: text("active_key"),
   level: text("level").default("base").notNull(),
   completedAt: timestamp("completed_at", { withTimezone: true }),
   ...timestamps,
-});
+}, t => [unique("interactive_sessions_owner_active").on(t.userId, t.activeKey)]);
 
 export const studyPackages = pgTable("study_packages", {
+  userId: uuid("user_id").references(() => users.id).notNull(),
   id: uuid("id").defaultRandom().primaryKey(),
-  cacheKey: text("cache_key").notNull().unique(),
+  cacheKey: text("cache_key").notNull(),
   kind: text("kind").notNull(),
   disciplineId: uuid("discipline_id").references(() => disciplines.id, { onDelete: "cascade" }).notNull(),
   topicId: uuid("topic_id").references(() => topics.id, { onDelete: "set null" }),
@@ -71,9 +113,10 @@ export const studyPackages = pgTable("study_packages", {
   content: jsonb("content").$type<AuthoredLesson>(),
   error: text("error"),
   ...timestamps,
-});
+}, t => [unique("study_packages_owner_cache").on(t.userId, t.cacheKey)]);
 
 export const disciplines = pgTable("disciplines", {
+  userId: uuid("user_id").references(() => users.id).notNull(),
   id: uuid("id").defaultRandom().primaryKey(),
   name: text("name").notNull(),
   description: text("description"),
@@ -84,6 +127,7 @@ export const disciplines = pgTable("disciplines", {
 });
 
 export const topics = pgTable("topics", {
+  userId: uuid("user_id").references(() => users.id).notNull(),
   id: uuid("id").defaultRandom().primaryKey(),
   disciplineId: uuid("discipline_id").references(() => disciplines.id, { onDelete: "cascade" }).notNull(),
   name: text("name").notNull(),
@@ -94,6 +138,7 @@ export const topics = pgTable("topics", {
 });
 
 export const learningUnits = pgTable("learning_units", {
+  userId: uuid("user_id").references(() => users.id).notNull(),
   id: uuid("id").defaultRandom().primaryKey(),
   disciplineId: uuid("discipline_id").references(() => disciplines.id, { onDelete: "cascade" }).notNull(),
   materialId: uuid("material_id").references(() => materials.id, { onDelete: "set null" }),
@@ -104,6 +149,7 @@ export const learningUnits = pgTable("learning_units", {
 });
 
 export const microLessons = pgTable("micro_lessons", {
+  userId: uuid("user_id").references(() => users.id).notNull(),
   id: uuid("id").defaultRandom().primaryKey(),
   unitId: uuid("unit_id").references(() => learningUnits.id, { onDelete: "cascade" }).notNull(),
   disciplineId: uuid("discipline_id").references(() => disciplines.id, { onDelete: "cascade" }).notNull(),
@@ -116,6 +162,7 @@ export const microLessons = pgTable("micro_lessons", {
 });
 
 export const lessonAttempts = pgTable("lesson_attempts", {
+  userId: uuid("user_id").references(() => users.id).notNull(),
   id: uuid("id").defaultRandom().primaryKey(),
   lessonId: uuid("lesson_id").references(() => microLessons.id, { onDelete: "cascade" }).notNull(),
   score: integer("score").notNull(),
@@ -126,6 +173,7 @@ export const lessonAttempts = pgTable("lesson_attempts", {
 });
 
 export const materials = pgTable("materials", {
+  userId: uuid("user_id").references(() => users.id).notNull(),
   id: uuid("id").defaultRandom().primaryKey(),
   disciplineId: uuid("discipline_id").references(() => disciplines.id, { onDelete: "cascade" }).notNull(),
   topicId: uuid("topic_id").references(() => topics.id, { onDelete: "set null" }),
@@ -136,6 +184,7 @@ export const materials = pgTable("materials", {
 });
 
 export const materialChunks = pgTable("material_chunks", {
+  userId: uuid("user_id").references(() => users.id).notNull(),
   id: uuid("id").defaultRandom().primaryKey(),
   materialId: uuid("material_id").references(() => materials.id, { onDelete: "cascade" }).notNull(),
   disciplineId: uuid("discipline_id").references(() => disciplines.id, { onDelete: "cascade" }).notNull(),
@@ -146,6 +195,7 @@ export const materialChunks = pgTable("material_chunks", {
 });
 
 export const difficulties = pgTable("difficulties", {
+  userId: uuid("user_id").references(() => users.id).notNull(),
   id: uuid("id").defaultRandom().primaryKey(),
   disciplineId: uuid("discipline_id").references(() => disciplines.id, { onDelete: "cascade" }).notNull(),
   topicId: uuid("topic_id").references(() => topics.id, { onDelete: "cascade" }).notNull(),
@@ -158,6 +208,7 @@ export const difficulties = pgTable("difficulties", {
 });
 
 export const tutorMessages = pgTable("tutor_messages", {
+  userId: uuid("user_id").references(() => users.id).notNull(),
   id: uuid("id").defaultRandom().primaryKey(),
   difficultyId: uuid("difficulty_id").references(() => difficulties.id, { onDelete: "cascade" }).notNull(),
   role: text("role").notNull(),
@@ -167,6 +218,7 @@ export const tutorMessages = pgTable("tutor_messages", {
 });
 
 export const studySessions = pgTable("study_sessions", {
+  userId: uuid("user_id").references(() => users.id).notNull(),
   id: uuid("id").defaultRandom().primaryKey(),
   disciplineId: uuid("discipline_id").references(() => disciplines.id, { onDelete: "set null" }),
   topicId: uuid("topic_id").references(() => topics.id, { onDelete: "set null" }),
@@ -178,6 +230,7 @@ export const studySessions = pgTable("study_sessions", {
 });
 
 export const quizzes = pgTable("quizzes", {
+  userId: uuid("user_id").references(() => users.id).notNull(),
   id: uuid("id").defaultRandom().primaryKey(),
   disciplineId: uuid("discipline_id").references(() => disciplines.id, { onDelete: "cascade" }).notNull(),
   topicId: uuid("topic_id").references(() => topics.id, { onDelete: "set null" }),
@@ -188,6 +241,7 @@ export const quizzes = pgTable("quizzes", {
 });
 
 export const quizQuestions = pgTable("quiz_questions", {
+  userId: uuid("user_id").references(() => users.id).notNull(),
   id: uuid("id").defaultRandom().primaryKey(),
   quizId: uuid("quiz_id").references(() => quizzes.id, { onDelete: "cascade" }).notNull(),
   topicId: uuid("topic_id").references(() => topics.id, { onDelete: "set null" }),
@@ -199,6 +253,7 @@ export const quizQuestions = pgTable("quiz_questions", {
 });
 
 export const quizAttempts = pgTable("quiz_attempts", {
+  userId: uuid("user_id").references(() => users.id).notNull(),
   id: uuid("id").defaultRandom().primaryKey(),
   quizId: uuid("quiz_id").references(() => quizzes.id, { onDelete: "cascade" }).notNull(),
   score: integer("score").notNull(),
@@ -210,6 +265,7 @@ export const quizAttempts = pgTable("quiz_attempts", {
 });
 
 export const reviews = pgTable("reviews", {
+  userId: uuid("user_id").references(() => users.id).notNull(),
   id: uuid("id").defaultRandom().primaryKey(),
   disciplineId: uuid("discipline_id").references(() => disciplines.id, { onDelete: "cascade" }).notNull(),
   topicId: uuid("topic_id").references(() => topics.id, { onDelete: "cascade" }).notNull(),
@@ -220,6 +276,7 @@ export const reviews = pgTable("reviews", {
 });
 
 export const exams = pgTable("exams", {
+  userId: uuid("user_id").references(() => users.id).notNull(),
   id: uuid("id").defaultRandom().primaryKey(),
   disciplineId: uuid("discipline_id").references(() => disciplines.id, { onDelete: "cascade" }).notNull(),
   name: text("name").notNull(),
@@ -229,6 +286,7 @@ export const exams = pgTable("exams", {
 });
 
 export const examTopics = pgTable("exam_topics", {
+  userId: uuid("user_id").references(() => users.id).notNull(),
   examId: uuid("exam_id").references(() => exams.id, { onDelete: "cascade" }).notNull(),
   topicId: uuid("topic_id").references(() => topics.id, { onDelete: "cascade" }).notNull(),
 }, (table) => [primaryKey({ columns: [table.examId, table.topicId] })]);

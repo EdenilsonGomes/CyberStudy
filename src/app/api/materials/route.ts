@@ -1,14 +1,15 @@
 import { NextResponse } from "next/server";
-import { getDb } from "@/db";
+import { getUserDb, withOwner } from "@/db/user-db";
 import { materialChunks, materials } from "@/db/schema";
-import { chunkText } from "@/lib/data";
-import { requireAuth } from "@/lib/auth";
-import { redirectTo } from "@/lib/http";
+import { assertStudyScope, chunkText } from "@/lib/data";
+import { redirectTo, sameOrigin } from "@/lib/http";
 
 export const runtime = "nodejs";
 
 export async function POST(request: Request) {
-  await requireAuth();
+  if (!sameOrigin(request)) return new Response("Origem inválida", { status: 403 });
+  const { db, userId } = await getUserDb();
+
   try {
     const form = await request.formData();
     const disciplineId = String(form.get("disciplineId") || "");
@@ -17,6 +18,7 @@ export async function POST(request: Request) {
     const pasted = String(form.get("content") || "").trim();
     const file = form.get("file");
     if (!disciplineId || !title) throw new Error("Título e disciplina são obrigatórios");
+    await assertStudyScope(disciplineId, topicId);
     let content = pasted;
     let type = "TEXTO";
     if (file instanceof File && file.size > 0) {
@@ -30,10 +32,10 @@ export async function POST(request: Request) {
       type = "PDF";
     }
     if (content.length < 20) throw new Error("Não foi possível obter texto suficiente do material");
-    const db = getDb();
-    const [material] = await db.insert(materials).values({ disciplineId, topicId, title, type, content }).returning({ id: materials.id });
+
+    const [material] = await db.insert(materials).values(withOwner(userId, { disciplineId, topicId, title, type, content })).returning({ id: materials.id });
     const chunks = chunkText(content).slice(0, 250);
-    await db.insert(materialChunks).values(chunks.map((chunk, position) => ({ materialId: material.id, disciplineId, topicId, position, content: chunk })));
+    await db.insert(materialChunks).values(withOwner(userId, chunks.map((chunk, position) => ({ materialId: material.id, disciplineId, topicId, position, content: chunk }))));
     return redirectTo(request, `/disciplinas/${disciplineId}?material=ok`);
   } catch (error) {
     const message = error instanceof Error ? error.message : "Falha ao processar material";

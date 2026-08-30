@@ -2,11 +2,12 @@ import { Plus } from "lucide-react";
 import { asc, eq } from "drizzle-orm";
 import { redirect } from "next/navigation";
 import { createDiscipline } from "@/app/actions";
-import { getDb } from "@/db";
+import { getUserDb, owned } from "@/db/user-db";
 import { disciplines } from "@/db/schema";
 
 export default async function DisciplinesPage() {
-  const items = await getDb().select().from(disciplines).where(eq(disciplines.status, "ATIVA")).orderBy(asc(disciplines.createdAt));
+  const { db, userId } = await getUserDb();
+  const items = await db.select().from(disciplines).where(owned(disciplines, userId, eq(disciplines.status, "ATIVA"))).orderBy(asc(disciplines.createdAt));
   if (items[0]) redirect(`/disciplinas/${items[0].id}`);
 
   return <div className="mx-auto max-w-xl space-y-6">

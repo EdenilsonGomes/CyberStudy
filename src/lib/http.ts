@@ -6,7 +6,7 @@ function configuredOrigin() {
   try { return new URL(value).origin; } catch { return ""; }
 }
 
-function publicOrigin(request: Request) {
+export function publicOrigin(request: Request) {
   const configured = configuredOrigin();
   if (configured) return configured;
 
@@ -21,10 +21,14 @@ function publicOrigin(request: Request) {
 }
 
 export function redirectTo(request: Request, path: string, status = 303) {
-  if (!path.startsWith("/") || path.startsWith("//")) {
+  if (!path.startsWith("/") || path.startsWith("//") || path.includes("\\") || new URL(path, publicOrigin(request)).origin !== publicOrigin(request)) {
     throw new Error("Destino de redirecionamento inválido");
   }
   const response = NextResponse.redirect(new URL(path, publicOrigin(request)), status);
   response.headers.set("Cache-Control", "no-store");
   return response;
+}
+
+export function sameOrigin(request: Request) {
+  return request.headers.get("origin") === publicOrigin(request) && request.headers.get("sec-fetch-site") !== "cross-site";
 }

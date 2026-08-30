@@ -1,15 +1,28 @@
 import { and, asc, desc, eq, isNull, or } from "drizzle-orm";
-import { getDb } from "@/db";
-import { materialChunks } from "@/db/schema";
+import { getUserDb, owned } from "@/db/user-db";
+import { disciplines, materialChunks, topics } from "@/db/schema";
+import { uuidPattern } from "./study-contract";
+
+export async function assertStudyScope(disciplineId: string, topicId?: string | null) {
+  const { db, userId } = await getUserDb();
+  if (!uuidPattern.test(disciplineId) || (topicId && !uuidPattern.test(topicId))) throw new Error("Conteúdo não encontrado");
+  const [discipline] = await db.select({ id: disciplines.id }).from(disciplines).where(owned(disciplines, userId, eq(disciplines.id, disciplineId))).limit(1);
+  if (!discipline) throw new Error("Conteúdo não encontrado");
+  if (topicId) {
+    const [topic] = await db.select({ id: topics.id }).from(topics).where(owned(topics, userId, and(eq(topics.id, topicId), eq(topics.disciplineId, disciplineId)))).limit(1);
+    if (!topic) throw new Error("Conteúdo não encontrado");
+  }
+}
 
 function words(value: string) {
   return [...new Set(value.toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "").split(/\W+/).filter((word) => word.length > 3))];
 }
 
 export async function findContext(disciplineId: string, topicId: string | null, query: string) {
-  const db = getDb();
+  const { db, userId } = await getUserDb();
+
   const chunks = await db.select().from(materialChunks)
-    .where(topicId ? and(eq(materialChunks.disciplineId, disciplineId), or(eq(materialChunks.topicId, topicId), isNull(materialChunks.topicId))) : eq(materialChunks.disciplineId, disciplineId))
+    .where(owned(materialChunks, userId, topicId ? and(eq(materialChunks.disciplineId, disciplineId), or(eq(materialChunks.topicId, topicId), isNull(materialChunks.topicId))) : eq(materialChunks.disciplineId, disciplineId)))
     .orderBy(asc(materialChunks.position)).limit(40);
   const terms = words(query);
   return chunks

@@ -20,7 +20,7 @@ Requisitos: Node.js 22+, pnpm e PostgreSQL.
 3. Execute `pnpm db:migrate`.
 4. Execute `pnpm dev` e acesse `http://localhost:3000`.
 
-O login usa `ADMIN_EMAIL` e `ADMIN_PASSWORD`. Não existe cadastro público nesta V0.
+O login inicial usa `ADMIN_EMAIL` e `ADMIN_PASSWORD`; depois, contas locais entram por convite com dados isolados. Perfil → Administrar contas e convites. Não existe cadastro público. Veja [contas e futura integração Supabase](docs/accounts.md).
 
 ## Variáveis
 
@@ -31,8 +31,8 @@ O login usa `ADMIN_EMAIL` e `ADMIN_PASSWORD`. Não existe cadastro público nest
 | `OPENAI_MODEL` | não | Modelo configurável; padrão `gpt-5-mini` |
 | `MISTRAL_API_KEY` | não | Alternativa para gerar trilhas a partir de materiais |
 | `MISTRAL_MODEL` | não | Modelo Mistral; padrão `mistral-small-latest` |
-| `ADMIN_EMAIL` | sim | Login único da V0 |
-| `ADMIN_PASSWORD` | sim | Login e assinatura da sessão quando `AUTH_SECRET` não existe |
+| `ADMIN_EMAIL` | sim | Importação única do proprietário dos dados legados |
+| `ADMIN_PASSWORD` | sim | Senha inicial do proprietário; assinatura quando `AUTH_SECRET` não existe |
 | `AUTH_SECRET` | recomendado | Segredo longo para assinar a sessão |
 | `NEXT_PUBLIC_APP_NAME` | não | Nome público da aplicação |
 | `NODE_ENV` | sim em produção | Use `production` |

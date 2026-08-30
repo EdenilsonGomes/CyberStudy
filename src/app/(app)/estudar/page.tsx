@@ -3,7 +3,7 @@ import { redirect } from "next/navigation";
 import { PilotEntry } from "@/components/pilot-entry";
 import { BookOpenCheck, Brain, Check, CheckCircle2, ChevronRight, CircleHelp, Flame, FlaskConical, Lightbulb, MessageCircleQuestion, Play, RotateCcw, Sparkles } from "lucide-react";
 import { and, asc, desc, eq } from "drizzle-orm";
-import { getDb } from "@/db";
+import { getUserDb, owned } from "@/db/user-db";
 import { difficulties, disciplines, lessonAttempts, microLessons, quizAttempts, quizQuestions, quizzes, reviews, studySessions, topics, tutorMessages } from "@/db/schema";
 import { createDifficulty, generateQuiz, startGuidedSession, testUnderstanding } from "@/app/actions";
 import { SubmitButton } from "@/components/submit-button";
@@ -14,31 +14,32 @@ import { learningRhythm, pickNextTopic } from "@/lib/learning";
 type StudyQuery = { topico?: string; dificuldade?: string; quiz?: string; tentativa?: string; entendimento?: string; erro?: string; sessao?: string; guiada?: string; foco?: string; voltar?: string };
 
 export default async function StudyPage({ searchParams }: { searchParams: Promise<StudyQuery> }) {
+  const { db, userId } = await getUserDb();
   const query = await searchParams;
   if (query.sessao === "1" && query.topico && !query.dificuldade && !query.quiz) redirect(`/estudar/iniciar?topico=${encodeURIComponent(query.topico)}`);
-  const db = getDb();
+
   const [disciplineRows, topicRows, lessonRows, lessonAttemptRows] = await Promise.all([
-    db.select().from(disciplines).where(eq(disciplines.status, "ATIVA")),
-    db.select().from(topics).orderBy(asc(topics.createdAt)),
-    db.select().from(microLessons).orderBy(asc(microLessons.createdAt)),
-    db.select({ lessonId: lessonAttempts.lessonId, score: lessonAttempts.score }).from(lessonAttempts).orderBy(desc(lessonAttempts.createdAt)),
+    db.select().from(disciplines).where(owned(disciplines, userId, eq(disciplines.status, "ATIVA"))),
+    db.select().from(topics).orderBy(asc(topics.createdAt)).where(owned(topics, userId)),
+    db.select().from(microLessons).orderBy(asc(microLessons.createdAt)).where(owned(microLessons, userId)),
+    db.select({ lessonId: lessonAttempts.lessonId, score: lessonAttempts.score }).from(lessonAttempts).orderBy(desc(lessonAttempts.createdAt)).where(owned(lessonAttempts, userId)),
   ]);
   let activeDifficulty: typeof difficulties.$inferSelect | undefined;
   let messages: typeof tutorMessages.$inferSelect[] = [];
   if (query.dificuldade) {
-    [activeDifficulty] = await db.select().from(difficulties).where(eq(difficulties.id, query.dificuldade)).limit(1);
-    if (activeDifficulty) messages = await db.select().from(tutorMessages).where(eq(tutorMessages.difficultyId, activeDifficulty.id)).orderBy(asc(tutorMessages.createdAt));
+    [activeDifficulty] = await db.select().from(difficulties).where(owned(difficulties, userId, eq(difficulties.id, query.dificuldade))).limit(1);
+    if (activeDifficulty) messages = await db.select().from(tutorMessages).where(owned(tutorMessages, userId, eq(tutorMessages.difficultyId, activeDifficulty.id))).orderBy(asc(tutorMessages.createdAt));
   }
   let activeQuiz: typeof quizzes.$inferSelect | undefined;
   let questions: typeof quizQuestions.$inferSelect[] = [];
   let attempt: typeof quizAttempts.$inferSelect | undefined;
   if (query.quiz) {
-    [activeQuiz] = await db.select().from(quizzes).where(eq(quizzes.id, query.quiz)).limit(1);
-    questions = await db.select().from(quizQuestions).where(eq(quizQuestions.quizId, query.quiz));
-    if (query.tentativa) [attempt] = await db.select().from(quizAttempts).where(eq(quizAttempts.id, query.tentativa)).limit(1);
+    [activeQuiz] = await db.select().from(quizzes).where(owned(quizzes, userId, eq(quizzes.id, query.quiz))).limit(1);
+    questions = await db.select().from(quizQuestions).where(owned(quizQuestions, userId, eq(quizQuestions.quizId, query.quiz)));
+    if (query.tentativa) [attempt] = await db.select().from(quizAttempts).where(owned(quizAttempts, userId, eq(quizAttempts.id, query.tentativa))).limit(1);
   }
   let understanding: typeof studySessions.$inferSelect | undefined;
-  if (query.entendimento) [understanding] = await db.select().from(studySessions).where(eq(studySessions.id, query.entendimento)).limit(1);
+  if (query.entendimento) [understanding] = await db.select().from(studySessions).where(owned(studySessions, userId, eq(studySessions.id, query.entendimento))).limit(1);
 
   const selectedTopicId = query.topico || activeDifficulty?.topicId || activeQuiz?.topicId || "";
   const selectedTopic = topicRows.find((topic) => topic.id === selectedTopicId) ?? pickNextTopic(topicRows);
@@ -50,8 +51,8 @@ export default async function StudyPage({ searchParams }: { searchParams: Promis
   let rhythm = { streak: 0, completedToday: false };
   if (attempt) {
     const [reviewRows, recentSessions] = await Promise.all([
-      activeQuiz?.topicId ? db.select().from(reviews).where(and(eq(reviews.topicId, activeQuiz.topicId), eq(reviews.status, "PENDENTE"))).orderBy(asc(reviews.scheduledFor)).limit(1) : Promise.resolve([]),
-      db.select({ createdAt: studySessions.createdAt }).from(studySessions).orderBy(desc(studySessions.createdAt)).limit(120),
+      activeQuiz?.topicId ? db.select().from(reviews).where(owned(reviews, userId, and(eq(reviews.topicId, activeQuiz.topicId), eq(reviews.status, "PENDENTE")))).orderBy(asc(reviews.scheduledFor)).limit(1) : Promise.resolve([]),
+      db.select({ createdAt: studySessions.createdAt }).from(studySessions).orderBy(desc(studySessions.createdAt)).limit(120).where(owned(studySessions, userId)),
     ]);
     nextReview = reviewRows[0];
     rhythm = learningRhythm(recentSessions.map((session) => session.createdAt));

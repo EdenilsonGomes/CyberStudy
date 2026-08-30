@@ -2,22 +2,23 @@ import Link from "next/link";
 import { PilotEntry } from "@/components/pilot-entry";
 import { ArrowRight, CalendarDays, Flame, Play, Target } from "lucide-react";
 import { and, asc, desc, eq, gte, lte } from "drizzle-orm";
-import { getDb } from "@/db";
+import { getUserDb, owned } from "@/db/user-db";
 import { disciplines, exams, learningUnits, lessonAttempts, microLessons, reviews, studySessions, topics } from "@/db/schema";
 import { learningRhythm, pickNextTopic } from "@/lib/learning";
 import { activeStudy, studyProgress } from "@/lib/study";
 
 export default async function DashboardPage() {
-  const db = getDb();
+  const { db, userId, user } = await getUserDb();
+
   const today = new Date().toISOString().slice(0, 10);
   const [activeDisciplines, allTopics, dueReviews, nextExams, recentSessions, lessonRows, attemptRows] = await Promise.all([
-    db.select().from(disciplines).where(eq(disciplines.status, "ATIVA")),
-    db.select().from(topics).orderBy(asc(topics.createdAt)),
-    db.select({ review: reviews, topic: topics.name, discipline: disciplines.name }).from(reviews).innerJoin(topics, eq(reviews.topicId, topics.id)).innerJoin(disciplines, eq(reviews.disciplineId, disciplines.id)).where(and(eq(reviews.status, "PENDENTE"), lte(reviews.scheduledFor, today))).orderBy(asc(reviews.scheduledFor)).limit(3),
-    db.select({ exam: exams, discipline: disciplines.name }).from(exams).innerJoin(disciplines, eq(exams.disciplineId, disciplines.id)).where(gte(exams.examDate, today)).orderBy(asc(exams.examDate)).limit(1),
-    db.select({ createdAt: studySessions.createdAt }).from(studySessions).orderBy(desc(studySessions.createdAt)).limit(120),
-    db.select({ lesson: microLessons, unit: learningUnits }).from(microLessons).innerJoin(learningUnits, eq(microLessons.unitId, learningUnits.id)).orderBy(learningUnits.position, microLessons.position),
-    db.select({ lessonId: lessonAttempts.lessonId, score: lessonAttempts.score }).from(lessonAttempts).orderBy(desc(lessonAttempts.createdAt)),
+    db.select().from(disciplines).where(owned(disciplines, userId, eq(disciplines.status, "ATIVA"))),
+    db.select().from(topics).orderBy(asc(topics.createdAt)).where(owned(topics, userId)),
+    db.select({ review: reviews, topic: topics.name, discipline: disciplines.name }).from(reviews).innerJoin(topics, eq(reviews.topicId, topics.id)).innerJoin(disciplines, eq(reviews.disciplineId, disciplines.id)).where(owned(reviews, userId, and(eq(reviews.status, "PENDENTE"), lte(reviews.scheduledFor, today)))).orderBy(asc(reviews.scheduledFor)).limit(3),
+    db.select({ exam: exams, discipline: disciplines.name }).from(exams).innerJoin(disciplines, eq(exams.disciplineId, disciplines.id)).where(owned(exams, userId, gte(exams.examDate, today))).orderBy(asc(exams.examDate)).limit(1),
+    db.select({ createdAt: studySessions.createdAt }).from(studySessions).orderBy(desc(studySessions.createdAt)).limit(120).where(owned(studySessions, userId)),
+    db.select({ lesson: microLessons, unit: learningUnits }).from(microLessons).innerJoin(learningUnits, eq(microLessons.unitId, learningUnits.id)).orderBy(learningUnits.position, microLessons.position).where(owned(microLessons, userId)),
+    db.select({ lessonId: lessonAttempts.lessonId, score: lessonAttempts.score }).from(lessonAttempts).orderBy(desc(lessonAttempts.createdAt)).where(owned(lessonAttempts, userId)),
   ]);
 
   const completedIds = new Set(attemptRows.filter((attempt) => attempt.score >= 60).map((attempt) => attempt.lessonId));
@@ -33,7 +34,7 @@ export default async function DashboardPage() {
   const rhythm = learningRhythm(recentSessions.map((session) => session.createdAt));
   const completedToday = recentSessions.filter((session) => session.createdAt.toISOString().slice(0, 10) === today).length;
   const nextExam = nextExams[0];
-  const rawName = (process.env.ADMIN_EMAIL?.split("@")[0] || "estudante").split(/[._-]/)[0];
+  const rawName = user.name.split(/\s+/)[0];
   const studentName = rawName.charAt(0).toUpperCase() + rawName.slice(1);
   const hour = Number(new Intl.DateTimeFormat("pt-BR", { timeZone: "America/Sao_Paulo", hour: "2-digit", hour12: false }).format(new Date()));
   const greeting = hour < 12 ? "Bom dia" : hour < 18 ? "Boa tarde" : "Boa noite";

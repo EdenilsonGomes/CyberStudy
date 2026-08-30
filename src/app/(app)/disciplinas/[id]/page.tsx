@@ -3,7 +3,7 @@ import { PilotEntry } from "@/components/pilot-entry";
 import { BookOpen, Check, Dumbbell, FileText, LockKeyhole, Play, Plus, RotateCcw, Settings2 } from "lucide-react";
 import { asc, desc, eq } from "drizzle-orm";
 import { notFound } from "next/navigation";
-import { getDb } from "@/db";
+import { getUserDb, owned } from "@/db/user-db";
 import { disciplines, learningUnits, lessonAttempts, materials, microLessons, topics } from "@/db/schema";
 import { createLearningPath, createTopic, deleteMaterial, deleteTopic, organizeMaterial, updateTopicStatus } from "@/app/actions";
 import { ConfirmSubmitButton, MaterialFeedback, SubmitButton } from "@/components/submit-button";
@@ -11,18 +11,19 @@ import { pickNextTopic, topicStatusLabel } from "@/lib/learning";
 import { studyProgress, latestDiagnostic } from "@/lib/study";
 
 export default async function DisciplinePage({ params, searchParams }: { params: Promise<{ id: string }>; searchParams: Promise<{ trilha?: string; material?: string }> }) {
+  const { db, userId } = await getUserDb();
   const { id } = await params;
   const query = await searchParams;
-  const db = getDb();
-  const [discipline] = await db.select().from(disciplines).where(eq(disciplines.id, id)).limit(1);
+
+  const [discipline] = await db.select().from(disciplines).where(owned(disciplines, userId, eq(disciplines.id, id))).limit(1);
   if (!discipline) notFound();
   const [topicRows, materialRows, unitRows, lessonRows, attemptRows, disciplineChoices] = await Promise.all([
-    db.select().from(topics).where(eq(topics.disciplineId, id)).orderBy(topics.createdAt),
-    db.select().from(materials).where(eq(materials.disciplineId, id)).orderBy(desc(materials.createdAt)),
-    db.select().from(learningUnits).where(eq(learningUnits.disciplineId, id)).orderBy(learningUnits.position),
-    db.select().from(microLessons).where(eq(microLessons.disciplineId, id)).orderBy(microLessons.createdAt),
-    db.select({ attempt: lessonAttempts, lessonId: microLessons.id }).from(lessonAttempts).innerJoin(microLessons, eq(lessonAttempts.lessonId, microLessons.id)).where(eq(microLessons.disciplineId, id)).orderBy(desc(lessonAttempts.createdAt)),
-    db.select().from(disciplines).where(eq(disciplines.status, "ATIVA")).orderBy(asc(disciplines.createdAt)),
+    db.select().from(topics).where(owned(topics, userId, eq(topics.disciplineId, id))).orderBy(topics.createdAt),
+    db.select().from(materials).where(owned(materials, userId, eq(materials.disciplineId, id))).orderBy(desc(materials.createdAt)),
+    db.select().from(learningUnits).where(owned(learningUnits, userId, eq(learningUnits.disciplineId, id))).orderBy(learningUnits.position),
+    db.select().from(microLessons).where(owned(microLessons, userId, eq(microLessons.disciplineId, id))).orderBy(microLessons.createdAt),
+    db.select({ attempt: lessonAttempts, lessonId: microLessons.id }).from(lessonAttempts).innerJoin(microLessons, eq(lessonAttempts.lessonId, microLessons.id)).where(owned(lessonAttempts, userId, eq(microLessons.disciplineId, id))).orderBy(desc(lessonAttempts.createdAt)),
+    db.select().from(disciplines).where(owned(disciplines, userId, eq(disciplines.status, "ATIVA"))).orderBy(asc(disciplines.createdAt)),
   ]);
   const completedLessonIds = new Set(attemptRows.filter(({ attempt }) => attempt.score >= 60).map(({ lessonId }) => lessonId));
   const [completedStudies, diagnostic] = await Promise.all([studyProgress(id), latestDiagnostic(id)]);

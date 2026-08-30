@@ -1,26 +1,27 @@
 import { and, asc, desc, eq, isNotNull, isNull } from "drizzle-orm";
 import { createHash } from "node:crypto";
-import { getDb } from "@/db";
+import { getUserDb, owned } from "@/db/user-db";
 import { disciplines, interactiveSessions, learningUnits, materialChunks, materials, microLessons, studyPackages, topics } from "@/db/schema";
 import { adaptStudyLesson, diagnosticLevels, uuidPattern, type StudySource } from "@/lib/study-contract";
 
 export type StudyTarget = { disciplineId: string; topicId: string | null; lessonId: string | null; title: string; concept: string; diagnostic: boolean; key: string; sources: StudySource[]; cacheKey: string };
 
 export async function resolveStudyTarget(input: { topicId?: string; lessonId?: string; disciplineId?: string; diagnostic?: boolean }): Promise<StudyTarget | null> {
-  const db = getDb();
+  const { db, userId } = await getUserDb();
+
   for (const id of [input.topicId, input.lessonId, input.disciplineId]) if (id && !uuidPattern.test(id)) return null;
-  const [lesson] = input.lessonId ? await db.select().from(microLessons).where(eq(microLessons.id, input.lessonId)).limit(1) : [];
+  const [lesson] = input.lessonId ? await db.select().from(microLessons).where(owned(microLessons, userId, eq(microLessons.id, input.lessonId))).limit(1) : [];
   if (input.lessonId && !lesson) return null;
   const topicId = lesson?.topicId || input.topicId;
-  const [topic] = topicId ? await db.select().from(topics).where(eq(topics.id, topicId)).limit(1) : [];
+  const [topic] = topicId ? await db.select().from(topics).where(owned(topics, userId, eq(topics.id, topicId))).limit(1) : [];
   const disciplineId = lesson?.disciplineId || topic?.disciplineId || input.disciplineId;
   if (!disciplineId) return null;
-  const [discipline] = await db.select().from(disciplines).where(eq(disciplines.id, disciplineId)).limit(1);
+  const [discipline] = await db.select().from(disciplines).where(owned(disciplines, userId, eq(disciplines.id, disciplineId))).limit(1);
   if (!discipline) return null;
   const diagnostic = Boolean(input.diagnostic);
-  const scope = diagnostic ? await db.select().from(topics).where(eq(topics.disciplineId, disciplineId)).orderBy(asc(topics.createdAt)).limit(3) : [{ id: topic?.id || "", name: topic?.name || lesson?.title || discipline.name }];
-  const [unit] = lesson ? await db.select().from(learningUnits).where(eq(learningUnits.id, lesson.unitId)).limit(1) : [];
-  const chunks = await db.select({ id: materialChunks.id, topicId: materialChunks.topicId, title: materials.title, content: materialChunks.content }).from(materialChunks).innerJoin(materials, eq(materialChunks.materialId, materials.id)).where(and(eq(materialChunks.disciplineId, disciplineId), unit?.materialId ? eq(materialChunks.materialId, unit.materialId) : undefined)).orderBy(asc(materialChunks.position)).limit(120);
+  const scope = diagnostic ? await db.select().from(topics).where(owned(topics, userId, eq(topics.disciplineId, disciplineId))).orderBy(asc(topics.createdAt)).limit(3) : [{ id: topic?.id || "", name: topic?.name || lesson?.title || discipline.name }];
+  const [unit] = lesson ? await db.select().from(learningUnits).where(owned(learningUnits, userId, eq(learningUnits.id, lesson.unitId))).limit(1) : [];
+  const chunks = await db.select({ id: materialChunks.id, topicId: materialChunks.topicId, title: materials.title, content: materialChunks.content }).from(materialChunks).innerJoin(materials, eq(materialChunks.materialId, materials.id)).where(owned(materialChunks, userId, and(eq(materialChunks.disciplineId, disciplineId), unit?.materialId ? eq(materialChunks.materialId, unit.materialId) : undefined))).orderBy(asc(materialChunks.position)).limit(120);
   const sources: StudySource[] = [];
   for (const concept of scope) {
     const terms = `${concept.name} ${lesson?.title || ""}`.toLowerCase().split(/\W+/).filter((term) => term.length > 3);
@@ -37,12 +38,14 @@ export async function resolveStudyTarget(input: { topicId?: string; lessonId?: s
 }
 
 export async function activeStudy(key?: string) {
-  const [row] = await getDb().select({ session: interactiveSessions, package: studyPackages }).from(interactiveSessions).innerJoin(studyPackages, eq(interactiveSessions.packageId, studyPackages.id)).where(and(isNull(interactiveSessions.completedAt), isNotNull(interactiveSessions.activeKey), key ? eq(interactiveSessions.activeKey, key) : undefined)).orderBy(desc(interactiveSessions.updatedAt)).limit(1);
+  const { db, userId } = await getUserDb();
+  const [row] = await db.select({ session: interactiveSessions, package: studyPackages }).from(interactiveSessions).innerJoin(studyPackages, eq(interactiveSessions.packageId, studyPackages.id)).where(owned(interactiveSessions, userId, and(isNull(interactiveSessions.completedAt), isNotNull(interactiveSessions.activeKey), key ? eq(interactiveSessions.activeKey, key) : undefined))).orderBy(desc(interactiveSessions.updatedAt)).limit(1);
   return row;
 }
 
 export async function latestDiagnostic(disciplineId: string) {
-  const [row] = await getDb().select({ session: interactiveSessions, package: studyPackages }).from(interactiveSessions).innerJoin(studyPackages, eq(interactiveSessions.packageId, studyPackages.id)).where(and(eq(studyPackages.disciplineId, disciplineId), eq(studyPackages.kind, "diagnostic"), isNotNull(interactiveSessions.completedAt))).orderBy(desc(interactiveSessions.completedAt)).limit(1);
+  const { db, userId } = await getUserDb();
+  const [row] = await db.select({ session: interactiveSessions, package: studyPackages }).from(interactiveSessions).innerJoin(studyPackages, eq(interactiveSessions.packageId, studyPackages.id)).where(owned(interactiveSessions, userId, and(eq(studyPackages.disciplineId, disciplineId), eq(studyPackages.kind, "diagnostic"), isNotNull(interactiveSessions.completedAt)))).orderBy(desc(interactiveSessions.completedAt)).limit(1);
   return row;
 }
 
@@ -56,5 +59,6 @@ export function sessionLesson(row: typeof interactiveSessions.$inferSelect, cont
 }
 
 export async function studyProgress(disciplineId?: string) {
-  return getDb().select({ session: interactiveSessions, package: studyPackages }).from(interactiveSessions).innerJoin(studyPackages, eq(interactiveSessions.packageId, studyPackages.id)).where(and(eq(studyPackages.kind, "study"), isNotNull(interactiveSessions.completedAt), disciplineId ? eq(studyPackages.disciplineId, disciplineId) : undefined)).orderBy(desc(interactiveSessions.completedAt)).limit(100);
+  const { db, userId } = await getUserDb();
+  return db.select({ session: interactiveSessions, package: studyPackages }).from(interactiveSessions).innerJoin(studyPackages, eq(interactiveSessions.packageId, studyPackages.id)).where(owned(interactiveSessions, userId, and(eq(studyPackages.kind, "study"), isNotNull(interactiveSessions.completedAt), disciplineId ? eq(studyPackages.disciplineId, disciplineId) : undefined))).orderBy(desc(interactiveSessions.completedAt)).limit(100);
 }

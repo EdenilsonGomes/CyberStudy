@@ -2,23 +2,24 @@ import Link from "next/link";
 import { ArrowLeft, CheckCircle2, RotateCcw, ShieldAlert } from "lucide-react";
 import { asc, eq } from "drizzle-orm";
 import { notFound, redirect } from "next/navigation";
-import { getDb } from "@/db";
+import { getUserDb, owned } from "@/db/user-db";
 import { disciplines, learningUnits, lessonAttempts, microLessons, topics } from "@/db/schema";
 import { LessonRunner } from "@/components/lesson-runner";
 
 export default async function LessonPage({ params, searchParams }: { params: Promise<{ id: string }>; searchParams: Promise<{ tentativa?: string; legado?: string }> }) {
+  const { db, userId } = await getUserDb();
   const { id } = await params;
   const query = await searchParams;
-  const db = getDb();
-  const [row] = await db.select({ lesson: microLessons, unit: learningUnits, discipline: disciplines.name, topic: topics.name }).from(microLessons).innerJoin(learningUnits, eq(microLessons.unitId, learningUnits.id)).innerJoin(disciplines, eq(microLessons.disciplineId, disciplines.id)).leftJoin(topics, eq(microLessons.topicId, topics.id)).where(eq(microLessons.id, id)).limit(1);
+
+  const [row] = await db.select({ lesson: microLessons, unit: learningUnits, discipline: disciplines.name, topic: topics.name }).from(microLessons).innerJoin(learningUnits, eq(microLessons.unitId, learningUnits.id)).innerJoin(disciplines, eq(microLessons.disciplineId, disciplines.id)).leftJoin(topics, eq(microLessons.topicId, topics.id)).where(owned(microLessons, userId, eq(microLessons.id, id))).limit(1);
   if (!row) notFound();
   if (!query.tentativa && query.legado !== "1") redirect(`/estudar/iniciar?aula=${id}`);
-  const siblings = await db.select().from(microLessons).where(eq(microLessons.unitId, row.lesson.unitId)).orderBy(asc(microLessons.position));
+  const siblings = await db.select().from(microLessons).where(owned(microLessons, userId, eq(microLessons.unitId, row.lesson.unitId))).orderBy(asc(microLessons.position));
   const currentIndex = siblings.findIndex((lesson) => lesson.id === id);
   const previousLesson = siblings[currentIndex - 1];
   const nextLesson = siblings[currentIndex + 1];
   let attempt: typeof lessonAttempts.$inferSelect | undefined;
-  if (query.tentativa) [attempt] = await db.select().from(lessonAttempts).where(eq(lessonAttempts.id, query.tentativa)).limit(1);
+  if (query.tentativa) [attempt] = await db.select().from(lessonAttempts).where(owned(lessonAttempts, userId, eq(lessonAttempts.id, query.tentativa))).limit(1);
 
   return <div className="lesson-focus mx-auto max-w-3xl space-y-5">
     {!attempt ? <LessonRunner lessonId={row.lesson.id} disciplineId={row.lesson.disciplineId} topicId={row.lesson.topicId} title={row.lesson.title} objective={row.lesson.objective} contextLabel={`${row.discipline} · ${row.unit.title}`} backHref={`/disciplinas/${row.lesson.disciplineId}`} content={row.lesson.content}/> : <><Link href={`/disciplinas/${row.lesson.disciplineId}`} className="focus-back"><ArrowLeft size={18}/>Voltar para a trilha</Link><section className="card p-5 text-center md:p-8">

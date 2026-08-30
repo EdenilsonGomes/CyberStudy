@@ -4,15 +4,16 @@ import { PilotEntry } from "@/components/pilot-entry";
 import { PilotProgress } from "@/components/pilot-progress";
 import { AlertCircle, ArrowRight, CalendarCheck, Check, Dumbbell, RotateCcw, Zap } from "lucide-react";
 import { asc, desc, eq } from "drizzle-orm";
-import { getDb } from "@/db";
+import { getUserDb, owned } from "@/db/user-db";
 import { disciplines, quizAttempts, quizzes, reviews, topics } from "@/db/schema";
 import { completeReview, rescheduleReview } from "@/app/actions";
 
 export default async function ReviewsPage() {
-  const db = getDb();
+  const { db, userId } = await getUserDb();
+
   const [rows, recentAttempts] = await Promise.all([
-    db.select({ review: reviews, topic: topics.name, discipline: disciplines.name }).from(reviews).innerJoin(topics, eq(reviews.topicId, topics.id)).innerJoin(disciplines, eq(reviews.disciplineId, disciplines.id)).where(eq(reviews.status, "PENDENTE")).orderBy(asc(reviews.scheduledFor)),
-    db.select({ attempt: quizAttempts, quiz: quizzes, topic: topics.name, discipline: disciplines.name }).from(quizAttempts).innerJoin(quizzes, eq(quizAttempts.quizId, quizzes.id)).leftJoin(topics, eq(quizzes.topicId, topics.id)).innerJoin(disciplines, eq(quizzes.disciplineId, disciplines.id)).orderBy(desc(quizAttempts.createdAt)).limit(20),
+    db.select({ review: reviews, topic: topics.name, discipline: disciplines.name }).from(reviews).innerJoin(topics, eq(reviews.topicId, topics.id)).innerJoin(disciplines, eq(reviews.disciplineId, disciplines.id)).where(owned(reviews, userId, eq(reviews.status, "PENDENTE"))).orderBy(asc(reviews.scheduledFor)),
+    db.select({ attempt: quizAttempts, quiz: quizzes, topic: topics.name, discipline: disciplines.name }).from(quizAttempts).innerJoin(quizzes, eq(quizAttempts.quizId, quizzes.id)).leftJoin(topics, eq(quizzes.topicId, topics.id)).innerJoin(disciplines, eq(quizzes.disciplineId, disciplines.id)).orderBy(desc(quizAttempts.createdAt)).limit(20).where(owned(quizAttempts, userId)),
   ]);
   const mistakes = recentAttempts.filter(({ attempt, quiz }) => attempt.weaknesses.length > 0 && quiz.topicId).slice(0, 4);
   const today = new Date().toISOString().slice(0, 10);

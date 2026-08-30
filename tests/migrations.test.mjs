@@ -1,6 +1,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import { fileURLToPath } from "node:url";
+import { readdirSync } from "node:fs";
 import { runMigrations } from "../scripts/migration-runner.mjs";
 
 const directory = fileURLToPath(new URL("../migrations", import.meta.url));
@@ -22,10 +23,11 @@ function fakeDatabase(applied = [], fail = false) {
 }
 test("migration ledger and DDL are checked under the same transaction lock", async () => {
   const db = fakeDatabase();
-  assert.equal(await runMigrations(db.sql, directory, () => {}), 4);
+  const count = readdirSync(directory).filter(name => name.endsWith(".sql")).length;
+  assert.equal(await runMigrations(db.sql, directory, () => {}), count);
   assert.equal(db.calls[0], "begin"); assert.equal(db.calls.at(-1), "commit");
   assert.ok(db.calls.indexOf("select pg_advisory_xact_lock(934011, 1)") < db.calls.findIndex((query) => query.startsWith("select name")));
-  assert.equal(db.calls.filter((query) => query === "ddl").length, 4);
+  assert.equal(db.calls.filter((query) => query === "ddl").length, count);
   db.calls.length = 0;
   assert.equal(await runMigrations(db.sql, directory, () => {}), 0);
   assert.equal(db.calls.includes("ddl"), false);
