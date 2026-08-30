@@ -2,7 +2,9 @@
 
 ## Nova tentativa de publicação
 
-A primeira publicação retornou 502 e foi restaurada. Sem logs do EasyPanel não foi possível atribuir a falha a uma causa específica. Nesta revisão, a checagem do histórico de migrações e o DDL ficam sob o mesmo bloqueio transacional; há timeout e erro identificando migration/SQLSTATE, sem imprimir credenciais. O container escuta explicitamente em 0.0.0.0, encaminha sinais ao processo Node e inclui healthcheck. `/api/health` identifica esta versão como `interactive-study-r2`.
+A primeira publicação retornou 502 e foi restaurada. Sem logs do EasyPanel não foi possível atribuir a falha a uma causa específica. Nesta revisão, a checagem do histórico de migrações e o DDL ficam sob o mesmo bloqueio transacional; há timeout e erro identificando migration/SQLSTATE, sem imprimir credenciais. O container escuta explicitamente em 0.0.0.0, encaminha sinais ao processo Node e inclui healthcheck. `/api/health` identifica esta versão como `interactive-study-r4`.
+
+A republicação r2/r3 subiu com saúde 200 e acesso autenticado ao banco real. O teste de Hoje → Começar encontrou uma falha diferente: `INVALID_OPTIONS` na geração de atividades. Agora ambos os provedores recebem JSON Schema estrito, inclusive alternativas no nível correto e limites de texto. O adaptador de associações mantém o contrato das sessões existentes. As validações de fonte, gabarito e variedade pedagógica permanecem obrigatórias. A primeira preparação tem limite de 120 s, sem repetição automática de chamadas; falhas expõem somente códigos permitidos.
 
 Os testes do executor usam um banco simulado para verificar ordem, rollback e ausência de reaplicação. Eles NÃO validam a execução do SQL no PostgreSQL. Não havia banco configurado localmente e a instalação foi negada pelo ambiente. A validação com banco real depende da publicação/ambiente disponibilizado.
 

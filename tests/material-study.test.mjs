@@ -2,6 +2,7 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import { parseStudyLesson, adaptStudyLesson, diagnosticLevels } from "../src/lib/study-contract.ts";
+import { parseGeneratedStudy, studyGenerationSchema } from "../src/lib/study-generation.ts";
 import { initialLessonState, transition, publicLesson, feedbackFor, summarizeLesson } from "../src/lib/interactive-lesson.ts";
 
 const source = { id: "source", title: "Material didático", concept: "Observação e registro", content: "Primeiro observe os dados apresentados. Depois registre os dados para consultar posteriormente. Esse registro permite comparar observações." };
@@ -15,6 +16,37 @@ test("generic material activities require action and preserve real source quotes
   assert.deepEqual(lesson.steps.map((step) => step.type), ["scenario", "scenario", "scenario", "order"]);
   assert.equal(lesson.steps[0].source.title, source.title);
   assert.notDeepEqual(lesson.steps[3].items.map((item) => item.id), lesson.steps[3].expected);
+});
+test("provider schema requires common alternatives and rejects extra object fields", () => {
+  const schema = studyGenerationSchema([source], false);
+  assert.equal(schema.properties.steps.minItems, 6);
+  const variants = schema.properties.steps.items.anyOf;
+  for (const variant of variants) {
+    assert.equal(variant.additionalProperties, false);
+    assert.deepEqual(variant.required, Object.keys(variant.properties));
+    assert.deepEqual(variant.properties.sourceId.enum, [source.id]);
+  }
+  for (const variant of variants.filter(v => v.properties.type.enum[0] !== "order")) {
+    assert.ok(variant.required.includes("options"));
+    assert.equal(variant.properties.options.type, "array");
+    assert.equal(variant.properties.options.minItems, 2);
+    assert.equal(variant.properties.options.maxItems, 4);
+  }
+  const diagnostic = studyGenerationSchema([source], true);
+  assert.equal(diagnostic.properties.steps.minItems, 2);
+  assert.equal(diagnostic.properties.steps.items.anyOf.length, 1);
+});
+test("generated matching pairs adapt to the existing engine without weakening validation", () => {
+  const raw = studyRaw();
+  raw.steps[3] = { ...question(4), type: "match", items: [{ id: "observe", label: "Observação" }, { id: "record", label: "Registro" }], options: ["Coletar", "Guardar"], expected: [{ itemId: "observe", option: "Coletar" }, { itemId: "record", option: "Guardar" }] };
+  const lesson = parseGeneratedStudy(raw, [source], false);
+  assert.deepEqual(lesson.steps[3].expected, { observe: "Coletar", record: "Guardar" });
+  const original = structuredClone(raw);
+  raw.steps[3].expected[1].itemId = "observe";
+  assert.throws(() => parseGeneratedStudy(raw, [source], false), /INVALID_ANSWER_KEY/);
+  original.steps[3].expected[0].option = "Não existe";
+  assert.throws(() => parseGeneratedStudy(original, [source], false), /INVALID_ANSWER_KEY/);
+  assert.throws(() => parseGeneratedStudy({ ...studyRaw(), steps: studyRaw().steps.map(step => ({ ...step, quote: "Trecho que não aparece no material original." })) }, [source], false), /UNSUPPORTED_SOURCE/);
 });
 test("invalid citation, answer key, oversized text and cosmetic-only courses are rejected", () => {
   for (const mutate of [raw => raw.steps[0].quote = "Esta frase não aparece em nenhum material.", raw => raw.steps[1].expected = "Inventado", raw => raw.steps[0].instruction = "x".repeat(351), raw => raw.steps = [question(1), question(2), question(3), question(4)]]) {
