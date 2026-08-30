@@ -5,6 +5,7 @@ import { and, asc, desc, eq, gte, lte } from "drizzle-orm";
 import { getDb } from "@/db";
 import { disciplines, exams, learningUnits, lessonAttempts, microLessons, reviews, studySessions, topics } from "@/db/schema";
 import { learningRhythm, pickNextTopic } from "@/lib/learning";
+import { activeStudy, studyProgress } from "@/lib/study";
 
 export default async function DashboardPage() {
   const db = getDb();
@@ -20,11 +21,15 @@ export default async function DashboardPage() {
   ]);
 
   const completedIds = new Set(attemptRows.filter((attempt) => attempt.score >= 60).map((attempt) => attempt.lessonId));
+  const [resume, completedStudies] = await Promise.all([activeStudy(), studyProgress()]);
+  for (const row of completedStudies) if (row.package.lessonId) completedIds.add(row.package.lessonId);
   const activeIds = new Set(activeDisciplines.map((discipline) => discipline.id));
   const activeLessons = lessonRows.filter(({ lesson }) => activeIds.has(lesson.disciplineId));
   const nextLessonRow = activeLessons.find(({ lesson }) => !completedIds.has(lesson.id));
   const activeTopics = allTopics.filter((topic) => activeIds.has(topic.disciplineId));
-  const nextTopic = pickNextTopic(activeTopics, dueReviews.map(({ review }) => review.topicId));
+  const practicedTopicIds = new Set(completedStudies.map((row) => row.package.topicId));
+  const unpracticedTopics = activeTopics.filter((topic) => !practicedTopicIds.has(topic.id));
+  const nextTopic = pickNextTopic(unpracticedTopics.length ? unpracticedTopics : activeTopics, dueReviews.map(({ review }) => review.topicId));
   const rhythm = learningRhythm(recentSessions.map((session) => session.createdAt));
   const completedToday = recentSessions.filter((session) => session.createdAt.toISOString().slice(0, 10) === today).length;
   const nextExam = nextExams[0];
@@ -36,7 +41,9 @@ export default async function DashboardPage() {
   const missions: Array<{ title: string; detail: string; href: string }> = [];
   if (dueReviews[0]) missions.push({ title: `Revisar ${dueReviews[0].topic}`, detail: "4 min", href: `/estudar?topico=${dueReviews[0].review.topicId}&sessao=1` });
   if (nextLessonRow) missions.push({ title: nextLessonRow.lesson.title, detail: "8 min", href: `/aulas/${nextLessonRow.lesson.id}` });
-  if (nextTopic && missions.length < 3) missions.push({ title: "Teste rápido", detail: "3 min", href: `/estudar?topico=${nextTopic.id}&sessao=1` });
+  if (nextTopic && missions.length < 3) missions.push({ title: `Praticar ${nextTopic.name}`, detail: "Aula", href: `/estudar?topico=${nextTopic.id}&sessao=1` });
+  if (resume) missions.unshift({ title: resume.package.content?.title || "Seu estudo em andamento", detail: `Etapa ${resume.session.state.index + 1}`, href: `/estudar/sessao/${resume.session.id}` });
+  missions.splice(3);
   if (!missions.length) missions.push({ title: "Escolher a próxima trilha", detail: "2 min", href: "/disciplinas" });
   const mainAction = missions[0];
   const dailyGoal = Math.min(completedToday, 3);
@@ -47,7 +54,7 @@ export default async function DashboardPage() {
       <section className="mission-card cyber-grid">
         <div className="mission-kicker"><Target size={16}/>Sua missão de hoje</div>
         <div className="mission-list">{missions.map((mission, index) => <Link key={`${mission.title}-${index}`} href={mission.href} className="mission-item"><span className={`mission-number ${index === 0 ? "mission-current" : ""}`}>{index + 1}</span><span className="min-w-0 flex-1"><strong>{mission.title}</strong><small>{index === 0 ? "Próximo passo" : "Depois"}</small></span><span className="mission-time">{mission.detail}</span></Link>)}</div>
-        <Link className="btn btn-primary mt-6 w-full" href={mainAction.href}><Play size={18} fill="currentColor"/>Começar</Link>
+        <Link className="btn btn-primary mt-6 w-full" href={mainAction.href}><Play size={18} fill="currentColor"/>{resume ? "Continuar de onde parei" : "Começar"}</Link>
       </section>
       <section className="daily-goal" aria-label={`Meta diária: ${dailyGoal} de 3 atividades`}><div><strong>Meta diária</strong><p className="muted text-xs">Três passos curtos</p></div><div className="goal-dots" aria-hidden="true">{[0, 1, 2].map((index) => <span key={index} className={index < dailyGoal ? "goal-dot-filled" : ""}/>)}</div></section>
       <PilotEntry/>

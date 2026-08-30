@@ -8,6 +8,7 @@ import { disciplines, learningUnits, lessonAttempts, materials, microLessons, to
 import { createLearningPath, createTopic, deleteMaterial, deleteTopic, organizeMaterial, updateTopicStatus } from "@/app/actions";
 import { ConfirmSubmitButton, MaterialFeedback, SubmitButton } from "@/components/submit-button";
 import { pickNextTopic, topicStatusLabel } from "@/lib/learning";
+import { studyProgress, latestDiagnostic } from "@/lib/study";
 
 export default async function DisciplinePage({ params, searchParams }: { params: Promise<{ id: string }>; searchParams: Promise<{ trilha?: string; material?: string }> }) {
   const { id } = await params;
@@ -23,15 +24,20 @@ export default async function DisciplinePage({ params, searchParams }: { params:
     db.select({ attempt: lessonAttempts, lessonId: microLessons.id }).from(lessonAttempts).innerJoin(microLessons, eq(lessonAttempts.lessonId, microLessons.id)).where(eq(microLessons.disciplineId, id)).orderBy(desc(lessonAttempts.createdAt)),
     db.select().from(disciplines).where(eq(disciplines.status, "ATIVA")).orderBy(asc(disciplines.createdAt)),
   ]);
-  const nextTopic = pickNextTopic(topicRows);
   const completedLessonIds = new Set(attemptRows.filter(({ attempt }) => attempt.score >= 60).map(({ lessonId }) => lessonId));
+  const [completedStudies, diagnostic] = await Promise.all([studyProgress(id), latestDiagnostic(id)]);
+  for (const row of completedStudies) if (row.package.lessonId) completedLessonIds.add(row.package.lessonId);
+  const practicedTopicIds = new Set(completedStudies.map((row) => row.package.topicId));
+  const unpracticedTopics = topicRows.filter((topic) => !practicedTopicIds.has(topic.id));
+  const nextTopic = pickNextTopic(unpracticedTopics.length ? unpracticedTopics : topicRows);
   const nextLesson = lessonRows.find((lesson) => !completedLessonIds.has(lesson.id));
-  const completed = lessonRows.length ? completedLessonIds.size : topicRows.filter((topic) => topic.status === "DOMINADO").length;
+  const completed = lessonRows.length ? completedLessonIds.size : topicRows.filter((topic) => topic.status === "DOMINADO" || practicedTopicIds.has(topic.id)).length;
   const total = lessonRows.length || topicRows.length;
   const progress = total ? Math.round((completed / total) * 100) : 0;
   const topicById = new Map(topicRows.map((topic) => [topic.id, topic]));
 
   return <div className="mx-auto max-w-5xl space-y-6">
+    <section className="card p-5"><p className="eyebrow">Seu ponto de partida</p><p className="muted mt-2 text-sm">{diagnostic ? "O diagnóstico ajusta as próximas aulas. Conceitos não avaliados continuam pela base." : "Já sabe parte do conteúdo? Descubra por onde começar, sem repetir tudo."}</p><Link className="btn btn-secondary mt-4" href={diagnostic ? `/estudar/sessao/${diagnostic.session.id}` : `/estudar/iniciar?disciplina=${id}&diagnostico=1`}>{diagnostic ? "Ver meu diagnóstico" : "Fazer diagnóstico opcional"}</Link></section>
     <PilotEntry/>
     <div><p className="eyebrow">Trilha</p><div className="no-scrollbar mt-2 flex gap-2 overflow-x-auto pb-1">{disciplineChoices.map((item) => <Link key={item.id} href={`/disciplinas/${item.id}`} aria-current={item.id === id ? "page" : undefined} className={`trail-chip ${item.id === id ? "trail-chip-active" : ""}`}>{item.name}</Link>)}</div></div>
     <header className="card overflow-hidden"><div className="h-2" style={{ background: discipline.color }}/><div className="p-5 md:p-8"><span className="badge mb-3">{discipline.semester}</span><h1 className="page-title">{discipline.name}</h1><p className="muted mt-2 max-w-2xl">{discipline.description || "Avance um assunto por vez."}</p><div className="mt-6"><div className="mb-2 flex justify-between text-sm"><span>{completed} de {total} etapas concluídas</span><strong>{progress}%</strong></div><div className="progress"><span style={{ width: `${progress}%`, background: discipline.color }}/></div></div>{nextLesson ? <Link className="btn btn-primary mt-6 w-full md:w-auto" href={`/aulas/${nextLesson.id}`}><Play size={18} fill="currentColor"/>Continuar trilha</Link> : nextTopic && <Link className="btn btn-primary mt-6 w-full md:w-auto" href={`/estudar?topico=${nextTopic.id}&sessao=1`}><Play size={18} fill="currentColor"/>Continuar trilha</Link>}</div></header>
@@ -49,7 +55,7 @@ export default async function DisciplinePage({ params, searchParams }: { params:
           return accessible ? <Link key={lesson.id} href={`/aulas/${lesson.id}`} className={`learning-step ${current ? "learning-step-current" : ""} ${review ? "learning-step-review" : ""}`}>{content}</Link> : <div key={lesson.id} className="learning-step learning-step-locked" aria-disabled="true">{content}</div>;
         })}<Link href={unitDone ? "/revisoes" : "#"} aria-disabled={!unitDone} className={`learning-step learning-step-practice ${unitDone ? "" : "learning-step-locked"}`}><span className={`learning-node ${unitDone ? "learning-node-practice" : ""}`}>{unitDone ? <Dumbbell size={17}/> : <LockKeyhole size={16}/>}</span><div className="min-w-0 flex-1"><strong>Prática da unidade</strong><p className="muted mt-1 text-xs">{unitDone ? "Fixe o que aprendeu" : "Disponível ao concluir a unidade"}</p></div></Link></div></section>;
       })}</div> : topicRows.length === 0 ? <div className="empty">Envie um material e crie sua primeira trilha.</div> : <div className="learning-path">{topicRows.map((topic) => {
-        const done = topic.status === "DOMINADO";
+        const done = topic.status === "DOMINADO" || practicedTopicIds.has(topic.id);
         const current = topic.id === nextTopic?.id;
         const review = topic.status === "REVISAR";
         const accessible = done || current || review;

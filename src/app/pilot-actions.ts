@@ -41,7 +41,7 @@ export async function runPilotCommand(sessionId: string, command: LessonCommand)
           }).onConflictDoNothing();
         }
       }
-      return { state: next, feedback: feedbackFor(binaryPilot, next), hint: hintFor(binaryPilot, next), summary: next.completed ? summarizeLesson(binaryPilot, next) : null };
+      return { applied: next !== row.state, state: next, feedback: feedbackFor(binaryPilot, next), hint: hintFor(binaryPilot, next), summary: next.completed ? summarizeLesson(binaryPilot, next) : null };
     });
     if (result.state.completed) {
       revalidatePath("/dashboard"); revalidatePath("/revisoes"); revalidatePath("/estudar"); revalidatePath("/progresso"); revalidatePath("/historico");

@@ -68,21 +68,8 @@ export async function createDifficulty(form: FormData) {
 }
 
 export async function startGuidedSession(form: FormData) {
-  await requireAuth();
-  const db = getDb();
-  const topicId = requireValue(form, "topicId");
-  const [subject] = await db.select({ disciplineId: topics.disciplineId, discipline: disciplines.name, topic: topics.name }).from(topics).innerJoin(disciplines, eq(topics.disciplineId, disciplines.id)).where(eq(topics.id, topicId)).limit(1);
-  if (!subject) throw new Error("Tópico não encontrado");
-  const report = `Quero aprender ${subject.topic} em uma sessão guiada. Faça uma microlição com explicação curta, um exemplo passo a passo e termine com apenas uma pergunta para verificar se entendi.`;
-  const [created] = await db.insert(difficulties).values({ disciplineId: subject.disciplineId, topicId, originalReport: `Sessão guiada: ${subject.topic}`, lastReport: report, level: "QUERO_TESTAR" }).returning({ id: difficulties.id });
-  await db.insert(tutorMessages).values({ difficultyId: created.id, role: "USER", mode: "EXPLICAR", content: report });
-  const context = await findContext(subject.disciplineId, topicId, subject.topic);
-  let reply: string;
-  try { reply = await tutorReply({ mode: "EXPLICAR", discipline: subject.discipline, topic: subject.topic, report, context }); }
-  catch { redirect(`/estudar?dificuldade=${created.id}&guiada=1&erro=tutor`); }
-  await db.insert(tutorMessages).values({ difficultyId: created.id, role: "ASSISTANT", mode: "EXPLICAR", content: reply });
-  await db.update(topics).set({ status: "ESTUDANDO", updatedAt: new Date() }).where(eq(topics.id, topicId));
-  redirect(`/estudar?dificuldade=${created.id}&guiada=1`);
+  const { startMaterialStudy } = await import("@/app/study-actions");
+  return startMaterialStudy(form);
 }
 
 export async function continueTutor(form: FormData) {

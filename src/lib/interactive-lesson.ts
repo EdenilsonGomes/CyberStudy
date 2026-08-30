@@ -5,10 +5,11 @@ export const helpReasons: Record<HelpReason, string> = {
   explanation: "Não entendi a explicação", purpose: "Por que isso importa?",
   term: "Não entendi um termo", example: "Quero um exemplo", lost: "Estou completamente perdido",
 };
-type StepBase = { id: string; title: string; instruction: string; concept: string; assessment: boolean };
+type StepBase = { id: string; title: string; instruction: string; concept: string; assessment: boolean; brief?: string; source?: { title: string; quote: string } };
 export type Activity = StepBase & (
   | { type: "switches"; weights: number[]; target: number; showTotal: boolean }
   | { type: "choice"; pattern: string; weights: number[]; options: string[] }
+  | { type: "scenario"; options: string[]; scene: { label: string; value: string }[] }
   | { type: "match"; items: { id: string; label: string }[]; options: string[] }
   | { type: "order"; items: { id: string; label: string }[] }
 );
@@ -17,14 +18,15 @@ export type AuthoredActivity = Activity & {
   feedbackByAnswer?: Record<string, string>;
   hints: Record<HelpReason, [string, string]>;
 };
-export type InteractiveLesson = { id: string; version: number; title: string; objective: string; steps: Activity[] };
+export type InteractiveLesson = { id: string; version: number; title: string; objective: string; mode?: "diagnostic" | "study"; steps: Activity[] };
 export type AuthoredLesson = Omit<InteractiveLesson, "steps"> & { steps: AuthoredActivity[] };
-export type ResponseEvidence = { attempts: { answer: Answer; correct: boolean; assisted: boolean }[]; help: HelpReason[] };
+export type ResponseEvidence = { attempts: { answer: Answer; correct: boolean; assisted: boolean; unknown?: boolean }[]; help: HelpReason[] };
 export type LessonState = {
   revision: number; index: number; checked: boolean; elapsedSeconds: number;
   evidence: Record<string, ResponseEvidence>; completed: boolean;
+  draft?: Answer;
 };
-export type LessonCommand = { revision: number; type: "answer" | "hint" | "retry" | "next"; answer?: Answer; reason?: HelpReason; seconds: number };
+export type LessonCommand = { revision: number; type: "answer" | "hint" | "retry" | "next" | "unknown" | "checkpoint"; answer?: Answer; reason?: HelpReason; seconds: number };
 export type LessonFeedback = { correct: boolean; explanation: string; solution: string };
 export const initialLessonState = (): LessonState => ({ revision: 0, index: 0, checked: false, elapsedSeconds: 0, evidence: {}, completed: false });
 
@@ -32,12 +34,13 @@ export function publicLesson(lesson: AuthoredLesson): InteractiveLesson {
   return { ...lesson, steps: lesson.steps.map((step) => {
     const { expected, explanation, misconception, feedbackByAnswer, hints, ...activity } = step;
     void expected; void explanation; void misconception; void feedbackByAnswer; void hints;
+    if (lesson.mode === "diagnostic") delete activity.source;
     return activity;
   }) };
 }
 
 export function validateAnswer(step: Activity, answer: unknown): answer is Answer {
-  if (step.type === "choice") return typeof answer === "string" && step.options.includes(answer);
+  if (step.type === "choice" || step.type === "scenario") return typeof answer === "string" && step.options.includes(answer);
   if (step.type === "switches") return typeof answer === "string" && new RegExp(`^[01]{${step.weights.length}}$`).test(answer);
   if (step.type === "order") return Array.isArray(answer) && answer.length === step.items.length && new Set(answer).size === step.items.length && answer.every((id) => step.items.some((item) => item.id === id));
   return typeof answer === "object" && answer !== null && !Array.isArray(answer)
@@ -46,6 +49,7 @@ export function validateAnswer(step: Activity, answer: unknown): answer is Answe
 }
 
 export function validateDraft(step: Activity, answer: unknown): answer is Answer {
+  if ((step.type === "scenario" || step.type === "choice") && answer === "") return true;
   if (step.type === "order") return Array.isArray(answer) && answer.length <= step.items.length && new Set(answer).size === answer.length && answer.every((id) => step.items.some((item) => item.id === id));
   if (step.type === "match") return typeof answer === "object" && answer !== null && !Array.isArray(answer) && Object.entries(answer).every(([key, value]) => step.items.some((item) => item.id === key) && (value === "" || step.options.includes(value)));
   return validateAnswer(step, answer);
@@ -63,6 +67,7 @@ export function solutionLabel(step: AuthoredActivity) {
 }
 
 export function feedbackFor(lesson: AuthoredLesson, state: LessonState): LessonFeedback | null {
+  if (lesson.mode === "diagnostic") return null; // Do not teach the answer before the second diagnostic probe.
   const step = lesson.steps[state.index];
   const attempts = state.evidence[step?.id]?.attempts;
   const last = attempts?.[attempts.length - 1];
@@ -86,24 +91,40 @@ export function transition(lesson: AuthoredLesson, previous: LessonState, comman
   const state = structuredClone(previous);
   const evidence = state.evidence[step.id] ??= { attempts: [], help: [] };
   switch (command.type) {
+    case "checkpoint":
+      if (!state.checked && command.answer !== undefined) {
+        if (!validateDraft(step, command.answer)) throw new Error("Rascunho inválido.");
+        state.draft = command.answer;
+      }
+      break;
+    case "unknown":
+      if (lesson.mode !== "diagnostic" || state.checked) throw new Error("Ação indisponível.");
+      evidence.attempts.push({ answer: "", correct: false, assisted: false, unknown: true });
+      state.checked = true;
+      delete state.draft;
+      break;
     case "answer":
       if (state.checked || !validateAnswer(step, command.answer)) throw new Error("Complete a atividade antes de responder.");
       if (evidence.attempts.length >= 20) throw new Error("Continue para o próximo desafio ou consulte a explicação.");
       evidence.attempts.push({ answer: command.answer, correct: isCorrectAnswer(step, command.answer), assisted: evidence.help.length > 0 || evidence.attempts.length > 0 });
       state.checked = true;
+      delete state.draft;
       break;
     case "hint":
+      if (lesson.mode === "diagnostic") throw new Error("O diagnóstico não usa pistas.");
       if (!command.reason || !Object.hasOwn(helpReasons, command.reason)) throw new Error("Escolha uma dúvida.");
       if (evidence.help.length >= 30) throw new Error("As pistas desta etapa já foram consultadas. Tente a atividade.");
       evidence.help.push(command.reason);
       break;
     case "retry":
+      if (lesson.mode === "diagnostic") throw new Error("A primeira resposta orienta o diagnóstico.");
       if (!state.checked || evidence.attempts.at(-1)?.correct) throw new Error("Não há resposta para tentar novamente.");
       state.checked = false;
       break;
     case "next":
       if (!state.checked || !evidence.attempts.length) throw new Error("Responda antes de avançar.");
       state.index++;
+      delete state.draft;
       state.checked = false;
       state.completed = state.index === lesson.steps.length;
       break;
@@ -121,7 +142,8 @@ export function summarizeLesson(lesson: AuthoredLesson, state: LessonState) {
     const independent = Boolean(first?.correct && !first.assisted);
     const corrected = Boolean(evidence?.attempts.some((attempt) => attempt.correct));
     return { id: step.id, title: step.title, concept: step.concept, assessment: step.assessment,
-      independent, corrected, attempts: evidence?.attempts.length || 0, hints: evidence?.help.length || 0 };
+      independent, corrected, attempts: evidence?.attempts.length || 0, hints: evidence?.help.length || 0,
+      solution: state.completed ? solutionLabel(step) : undefined, explanation: state.completed ? step.explanation : undefined };
   });
   const checks = rows.filter((row) => row.assessment);
   return { rows, independent: checks.filter((row) => row.independent).length, total: checks.length,
