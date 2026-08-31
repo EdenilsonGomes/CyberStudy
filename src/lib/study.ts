@@ -21,7 +21,8 @@ export async function resolveStudyTarget(input: { topicId?: string; lessonId?: s
   const diagnostic = Boolean(input.diagnostic);
   const scope = diagnostic ? await db.select().from(topics).where(owned(topics, userId, eq(topics.disciplineId, disciplineId))).orderBy(asc(topics.createdAt)).limit(3) : [{ id: topic?.id || "", name: topic?.name || lesson?.title || discipline.name }];
   const [unit] = lesson ? await db.select().from(learningUnits).where(owned(learningUnits, userId, eq(learningUnits.id, lesson.unitId))).limit(1) : [];
-  const chunks = await db.select({ id: materialChunks.id, topicId: materialChunks.topicId, title: materials.title, content: materialChunks.content }).from(materialChunks).innerJoin(materials, eq(materialChunks.materialId, materials.id)).where(owned(materialChunks, userId, and(eq(materialChunks.disciplineId, disciplineId), unit?.materialId ? eq(materialChunks.materialId, unit.materialId) : undefined))).orderBy(asc(materialChunks.position)).limit(120);
+  const materialId = unit?.materialId || (!diagnostic ? topic?.materialId : null);
+  const chunks = await db.select({ id: materialChunks.id, topicId: materialChunks.topicId, title: materials.title, content: materialChunks.content }).from(materialChunks).innerJoin(materials, eq(materialChunks.materialId, materials.id)).where(owned(materialChunks, userId, and(eq(materialChunks.disciplineId, disciplineId), materialId ? eq(materialChunks.materialId, materialId) : undefined))).orderBy(asc(materialChunks.position)).limit(120);
   const sources: StudySource[] = [];
   for (const concept of scope) {
     const terms = `${concept.name} ${lesson?.title || ""}`.toLowerCase().split(/\W+/).filter((term) => term.length > 3);
@@ -60,5 +61,6 @@ export function sessionLesson(row: typeof interactiveSessions.$inferSelect, cont
 
 export async function studyProgress(disciplineId?: string) {
   const { db, userId } = await getUserDb();
-  return db.select({ session: interactiveSessions, package: studyPackages }).from(interactiveSessions).innerJoin(studyPackages, eq(interactiveSessions.packageId, studyPackages.id)).where(owned(interactiveSessions, userId, and(eq(studyPackages.kind, "study"), isNotNull(interactiveSessions.completedAt), disciplineId ? eq(studyPackages.disciplineId, disciplineId) : undefined))).orderBy(desc(interactiveSessions.completedAt)).limit(100);
+  const rows = await db.selectDistinctOn([interactiveSessions.lessonKey], { session: interactiveSessions, package: studyPackages }).from(interactiveSessions).innerJoin(studyPackages, eq(interactiveSessions.packageId, studyPackages.id)).where(owned(interactiveSessions, userId, and(eq(studyPackages.kind, "study"), isNotNull(interactiveSessions.completedAt), disciplineId ? eq(studyPackages.disciplineId, disciplineId) : undefined))).orderBy(interactiveSessions.lessonKey, desc(interactiveSessions.completedAt));
+  return rows.sort((a, b) => +b.session.completedAt! - +a.session.completedAt!);
 }

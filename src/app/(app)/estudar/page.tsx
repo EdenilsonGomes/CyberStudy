@@ -11,12 +11,12 @@ import { TutorChat } from "@/components/tutor-chat";
 import { QuizRunner } from "@/components/quiz-runner";
 import { learningRhythm, pickNextTopic } from "@/lib/learning";
 
-type StudyQuery = { topico?: string; dificuldade?: string; quiz?: string; tentativa?: string; entendimento?: string; erro?: string; sessao?: string; guiada?: string; foco?: string; voltar?: string };
+type StudyQuery = { topico?: string; dificuldade?: string; quiz?: string; tentativa?: string; entendimento?: string; erro?: string; sessao?: string; guiada?: string; foco?: string; voltar?: string; revisao?: string };
 
 export default async function StudyPage({ searchParams }: { searchParams: Promise<StudyQuery> }) {
   const { db, userId } = await getUserDb();
   const query = await searchParams;
-  if (query.sessao === "1" && query.topico && !query.dificuldade && !query.quiz) redirect(`/estudar/iniciar?topico=${encodeURIComponent(query.topico)}`);
+  if (query.sessao === "1" && query.topico && !query.dificuldade && !query.quiz) redirect(`/estudar/iniciar?topico=${encodeURIComponent(query.topico)}${query.revisao === "1" ? "&revisao=1" : ""}`);
 
   const [disciplineRows, topicRows, lessonRows, lessonAttemptRows] = await Promise.all([
     db.select().from(disciplines).where(owned(disciplines, userId, eq(disciplines.status, "ATIVA"))),

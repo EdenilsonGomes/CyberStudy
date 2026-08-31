@@ -2,9 +2,9 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { BarChart3, Dumbbell, Home, Map, UserRound } from "lucide-react";
+import { BarChart3, Dumbbell, Map, UserRound } from "lucide-react";
 
-const items = [["Hoje", "/dashboard", Home], ["Trilha", "/disciplinas", Map], ["Praticar", "/revisoes", Dumbbell], ["Progresso", "/progresso", BarChart3], ["Perfil", "/perfil", UserRound]] as const;
+const items = [["Trilha", "/disciplinas", Map], ["Praticar", "/revisoes", Dumbbell], ["Progresso", "/progresso", BarChart3], ["Perfil", "/perfil", UserRound]] as const;
 
 export function DesktopNavigation() {
   const pathname = usePathname();

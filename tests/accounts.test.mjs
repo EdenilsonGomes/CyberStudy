@@ -38,6 +38,7 @@ test("real PostgreSQL migrations, invite lifecycle and cross-account isolation",
   const oldTopic = (await pg.query("INSERT INTO topics(discipline_id,name) VALUES($1,'Original concept') RETURNING id", [original.id])).rows[0];
   await pg.query("INSERT INTO study_sessions(activity_type,note) VALUES('PILOTO_INTERATIVO','Preserve my real history')");
   await pg.exec(readFileSync("migrations/0004_accounts.sql", "utf8"));
+  for (const file of readdirSync("migrations").filter(f => f.endsWith(".sql") && f > "0004_accounts.sql").sort()) await pg.exec(readFileSync(`migrations/${file}`, "utf8"));
   const db = drizzle(pg, { schema });
   const service = createAccountService(db, { email: "owner@example.test", password });
   await service.ensureLegacyAccount();

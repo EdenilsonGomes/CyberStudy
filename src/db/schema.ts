@@ -9,6 +9,7 @@ import {
   text,
   timestamp,
   uuid,
+  type AnyPgColumn,
 } from "drizzle-orm/pg-core";
 import type { AuthoredLesson, LessonState } from "../lib/interactive-lesson";
 
@@ -130,6 +131,7 @@ export const topics = pgTable("topics", {
   userId: uuid("user_id").references(() => users.id).notNull(),
   id: uuid("id").defaultRandom().primaryKey(),
   disciplineId: uuid("discipline_id").references(() => disciplines.id, { onDelete: "cascade" }).notNull(),
+  materialId: uuid("material_id").references((): AnyPgColumn => materials.id, { onDelete: "set null" }),
   name: text("name").notNull(),
   description: text("description"),
   status: text("status").default("NAO_ESTUDADO").notNull(),

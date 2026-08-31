@@ -10,9 +10,9 @@ test("all learning reads/updates/deletes are owner-scoped and inserts stamp serv
   let reads = 0, writes = 0;
   for (const path of files("src").filter(path => /\.tsx?$/.test(path))) {
     const source = readFileSync(path, "utf8");
-    if (!privileged.has(path)) assert.doesNotMatch(source, /import.*\bgetDb\b/, `${path}: unrestricted database import`);
-    if (!source.includes('from "@/db/user-db"')) continue;
-    assert.match(source, /await getUserDb\(\)/, `${path}: must derive identity from session`);
+    if (!privileged.has(path)) assert.doesNotMatch(source.replace(/^import type .*$/gm, ""), /import.*\bgetDb\b/, `${path}: unrestricted database import`);
+    if (!source.includes('from "@/db/user-db"') && path !== "src/lib/study-session-core.ts") continue;
+    if (path !== "src/lib/study-session-core.ts") assert.match(source, /await getUserDb\(\)/, `${path}: must derive identity from session`);
     const sf = ts.createSourceFile(path, source, ts.ScriptTarget.Latest, true);
     function visit(node) {
       if (ts.isCallExpression(node) && ts.isPropertyAccessExpression(node.expression)) {

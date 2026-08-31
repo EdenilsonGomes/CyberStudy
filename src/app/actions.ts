@@ -211,7 +211,7 @@ export async function organizeMaterial(form: FormData) {
     const reason = error instanceof Error && error.message === "AI_NOT_CONFIGURED" ? "sem_ia" : "erro";
     redirect(`/disciplinas/${row.material.disciplineId}?topicos=${reason}`);
   }
-  const existing = await db.select({ name: topics.name }).from(topics).where(owned(topics, userId, eq(topics.disciplineId, row.material.disciplineId)));
+  const existing = await db.select({ name: topics.name }).from(topics).where(owned(topics, userId, and(eq(topics.disciplineId, row.material.disciplineId), eq(topics.materialId, materialId))));
   const normalize = (name: string) => name.toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "").trim();
   const names = new Set(existing.map((topic) => normalize(topic.name)));
   const fresh = suggestions.filter((topic) => {
@@ -220,7 +220,7 @@ export async function organizeMaterial(form: FormData) {
     names.add(key);
     return true;
   });
-  if (fresh.length) await db.insert(topics).values(withOwner(userId, fresh.map((topic) => ({ disciplineId: row.material.disciplineId, name: topic.name, description: topic.description || null }))));
+  if (fresh.length) await db.insert(topics).values(withOwner(userId, fresh.map((topic) => ({ disciplineId: row.material.disciplineId, materialId, name: topic.name, description: topic.description || null }))));
   redirect(`/disciplinas/${row.material.disciplineId}?topicos=${fresh.length}`);
 }
 
@@ -230,23 +230,28 @@ export async function createLearningPath(form: FormData) {
   const materialId = requireValue(form, "materialId");
   const [row] = await db.select({ material: materials, discipline: disciplines.name }).from(materials).innerJoin(disciplines, eq(materials.disciplineId, disciplines.id)).where(owned(materials, userId, eq(materials.id, materialId))).limit(1);
   if (!row) throw new Error("Material não encontrado");
+  const [savedUnit] = await db.select({ id: learningUnits.id }).from(learningUnits).where(owned(learningUnits, userId, eq(learningUnits.materialId, materialId))).limit(1);
+  if (savedUnit) redirect(`/disciplinas/${row.material.disciplineId}?trilha=existente`);
   let generated: Awaited<ReturnType<typeof generateCourseFromMaterial>>;
   try { generated = await generateCourseFromMaterial({ discipline: row.discipline, title: row.material.title, content: row.material.content }); }
   catch (error) {
     const reason = error instanceof Error && error.message === "AI_NOT_CONFIGURED" ? "sem_ia" : "erro";
     redirect(`/disciplinas/${row.material.disciplineId}?trilha=${reason}`);
   }
-  const existingTopics = await db.select().from(topics).where(owned(topics, userId, eq(topics.disciplineId, row.material.disciplineId)));
+  const existingTopics = await db.select().from(topics).where(owned(topics, userId, and(eq(topics.disciplineId, row.material.disciplineId), eq(topics.materialId, materialId))));
   const normalize = (name: string) => name.toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "").trim();
   const byName = new Map(existingTopics.map((topic) => [normalize(topic.name), topic]));
   await db.transaction(async (tx) => {
-    await tx.delete(learningUnits).where(owned(learningUnits, userId, eq(learningUnits.materialId, materialId)));
+    // Serialize generation commits per PDF; never delete a learner's existing path.
+    await tx.select({ id: materials.id }).from(materials).where(owned(materials, userId, eq(materials.id, materialId))).for("update");
+    const [saved] = await tx.select({ id: learningUnits.id }).from(learningUnits).where(owned(learningUnits, userId, eq(learningUnits.materialId, materialId))).limit(1);
+    if (saved) return;
     for (const [unitPosition, unit] of generated.entries()) {
       const [createdUnit] = await tx.insert(learningUnits).values(withOwner(userId, { disciplineId: row.material.disciplineId, materialId, title: unit.title, description: unit.description || null, position: unitPosition })).returning({ id: learningUnits.id });
       for (const [lessonPosition, lesson] of unit.lessons.entries()) {
         let topic = byName.get(normalize(lesson.title));
         if (!topic) {
-          const [createdTopic] = await tx.insert(topics).values(withOwner(userId, { disciplineId: row.material.disciplineId, name: lesson.title, description: lesson.objective })).returning();
+          const [createdTopic] = await tx.insert(topics).values(withOwner(userId, { disciplineId: row.material.disciplineId, materialId, name: lesson.title, description: lesson.objective })).returning();
           topic = createdTopic;
           byName.set(normalize(lesson.title), topic);
         }
