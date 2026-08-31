@@ -13,7 +13,7 @@ import { binaryPilot } from "../src/lib/pilot-lesson.ts";
 import { applyStudyCommand } from "../src/lib/study-session-core.ts";
 
 const at = i => new Date(2026, 0, i);
-const topic = (id, materialId = "pdf1", extra = {}) => ({ id, name: id, materialId, status: "NAO_ESTUDADO", createdAt: at(Number(id.slice(1)) || 1), ...extra });
+const topic = (id, materialId = "pdf1", extra = {}) => ({ id, name: id, materialId, position: Number(id.slice(1)) || 1, status: "NAO_ESTUDADO", createdAt: at(1), ...extra });
 const fixture = () => ({ topics: [topic("t1"), topic("t2"), topic("t3", "pdf2")], materials: [{ id: "pdf1", title: "Unidade 1", createdAt: at(1) }, { id: "pdf2", title: "Unidade 2", createdAt: at(2) }], units: [], lessons: [], completed: [], attempts: [] });
 
 test("next step is ordered coverage, independent of reviews, mastery and repeats", () => {
@@ -31,6 +31,12 @@ test("next step is ordered coverage, independent of reviews, mastery and repeats
   trail = buildTrail(input);
   assert.equal(trail.done, true); assert.equal(trail.next, undefined); assert.equal(trail.currentUnit, undefined);
   assert.equal(input.topics[0].mastery, 0, "completion must not fabricate mastery");
+});
+
+test("explicit topic position preserves pedagogy when database timestamps are identical", () => {
+  const input = fixture();
+  input.topics = [topic("random-a", "pdf1", { position: 2 }), topic("random-z", "pdf1", { position: 0 }), topic("random-m", "pdf1", { position: 1 })];
+  assert.deepEqual(buildTrail(input).steps.map(step => step.topicId), ["random-z", "random-m", "random-a"]);
 });
 
 test("next PDF needs preparation; empty or ambiguous legacy content is not completed", () => {
@@ -82,6 +88,7 @@ test("database upgrade preserves legacy history and completion remains visible a
   const first = (await pg.query("INSERT INTO materials(user_id,discipline_id,title,type,content) VALUES($1,$2,'PDF unit 1','PDF','Synthetic local content') RETURNING id", [owner, course.id])).rows[0];
   const oldTopic = (await pg.query("INSERT INTO topics(user_id,discipline_id,name) VALUES($1,$2,'Original lesson') RETURNING id", [owner, course.id])).rows[0];
   await pg.exec(readFileSync("migrations/0005_trail_material.sql", "utf8"));
+  await pg.exec(readFileSync("migrations/0006_topic_position.sql", "utf8"));
   assert.equal((await pg.query("SELECT material_id,mastery FROM topics WHERE id=$1", [oldTopic.id])).rows[0].material_id, first.id);
   const db = drizzle(pg, { schema });
   const other = (await pg.query("INSERT INTO users(name) VALUES('Another test user') RETURNING id")).rows[0];

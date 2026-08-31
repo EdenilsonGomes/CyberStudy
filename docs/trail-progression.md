@@ -6,6 +6,7 @@
 - A última resposta salva a conclusão no servidor, na mesma transação do checkpoint. A correção continua visível; abrir o resultado não é requisito para salvar o avanço. Comandos repetidos não duplicam histórico nem revisões.
 - Sessões incompletas só são retomadas pela ação principal quando correspondem à próxima etapa. Abrir uma aula já concluída sem intenção de revisão segue para a continuação; `revisao=1` permite repetir explicitamente, reaproveitando conteúdo salvo.
 - As aulas geradas de um material são agrupadas em uma unidade/PDF, mantendo a ordem interna dos blocos existentes. Ao concluir, a continuação oferece a próxima unidade, preparar um material já enviado ou adicionar outro PDF.
+- A migration `0006_topic_position.sql` preserva a ordem histórica de inserção e grava posição explícita nos novos tópicos, evitando embaralhamento quando vários foram criados no mesmo instante.
 - O upload e os geradores existentes são reaproveitados: enviar PDF → preparar trilha/tópicos → estudar. Gerar uma trilha novamente não apaga uma existente.
 - A migration `0005_trail_material.sql` é aditiva. Associa tópicos antigos automaticamente apenas quando existe um único material na disciplina. Vínculos antigos ambíguos permanecem em “Conteúdo já cadastrado”, sem atribuição inventada nem exclusão de histórico.
 - Conclusões históricas são consultadas sem janela de 100 sessões. Uma sessão antiga por tópico só equivale a uma microaula quando há exatamente uma microaula correspondente; não conclui várias aulas automaticamente.

@@ -132,6 +132,7 @@ export const topics = pgTable("topics", {
   id: uuid("id").defaultRandom().primaryKey(),
   disciplineId: uuid("discipline_id").references(() => disciplines.id, { onDelete: "cascade" }).notNull(),
   materialId: uuid("material_id").references((): AnyPgColumn => materials.id, { onDelete: "set null" }),
+  position: integer("position").default(0).notNull(),
   name: text("name").notNull(),
   description: text("description"),
   status: text("status").default("NAO_ESTUDADO").notNull(),

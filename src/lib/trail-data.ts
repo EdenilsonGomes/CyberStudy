@@ -6,7 +6,7 @@ import { buildTrail } from "@/lib/trail";
 export async function loadTrail(disciplineId: string) {
   const { db, userId } = await getUserDb();
   const [topicRows, materialRows, units, lessons, completed, attempts, active] = await Promise.all([
-    db.select().from(topics).where(owned(topics, userId, eq(topics.disciplineId, disciplineId))).orderBy(asc(topics.createdAt)),
+    db.select().from(topics).where(owned(topics, userId, eq(topics.disciplineId, disciplineId))).orderBy(asc(topics.position), asc(topics.createdAt)),
     db.select().from(materials).where(owned(materials, userId, eq(materials.disciplineId, disciplineId))).orderBy(asc(materials.createdAt)),
     db.select().from(learningUnits).where(owned(learningUnits, userId, eq(learningUnits.disciplineId, disciplineId))),
     db.select().from(microLessons).where(owned(microLessons, userId, eq(microLessons.disciplineId, disciplineId))),

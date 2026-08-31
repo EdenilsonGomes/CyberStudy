@@ -31,7 +31,8 @@ export async function createTopic(form: FormData) {
   const { db, userId } = await getUserDb();
     const disciplineId = requireValue(form, "disciplineId");
   await assertStudyScope(disciplineId);
-  await db.insert(topics).values(withOwner(userId, { disciplineId, name: requireValue(form, "name").slice(0, 140), description: value(form, "description").slice(0, 600) || null }));
+  const [last] = await db.select({ position: topics.position }).from(topics).where(owned(topics, userId, eq(topics.disciplineId, disciplineId))).orderBy(desc(topics.position)).limit(1);
+  await db.insert(topics).values(withOwner(userId, { disciplineId, position: (last?.position ?? -1) + 1, name: requireValue(form, "name").slice(0, 140), description: value(form, "description").slice(0, 600) || null }));
   revalidatePath(`/disciplinas/${disciplineId}`);
 }
 
@@ -211,7 +212,7 @@ export async function organizeMaterial(form: FormData) {
     const reason = error instanceof Error && error.message === "AI_NOT_CONFIGURED" ? "sem_ia" : "erro";
     redirect(`/disciplinas/${row.material.disciplineId}?topicos=${reason}`);
   }
-  const existing = await db.select({ name: topics.name }).from(topics).where(owned(topics, userId, and(eq(topics.disciplineId, row.material.disciplineId), eq(topics.materialId, materialId))));
+  const existing = await db.select({ name: topics.name, position: topics.position }).from(topics).where(owned(topics, userId, and(eq(topics.disciplineId, row.material.disciplineId), eq(topics.materialId, materialId))));
   const normalize = (name: string) => name.toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "").trim();
   const names = new Set(existing.map((topic) => normalize(topic.name)));
   const fresh = suggestions.filter((topic) => {
@@ -220,7 +221,8 @@ export async function organizeMaterial(form: FormData) {
     names.add(key);
     return true;
   });
-  if (fresh.length) await db.insert(topics).values(withOwner(userId, fresh.map((topic) => ({ disciplineId: row.material.disciplineId, materialId, name: topic.name, description: topic.description || null }))));
+  const nextPosition = Math.max(-1, ...existing.map(topic => topic.position)) + 1;
+  if (fresh.length) await db.insert(topics).values(withOwner(userId, fresh.map((topic, index) => ({ disciplineId: row.material.disciplineId, materialId, position: nextPosition + index, name: topic.name, description: topic.description || null }))));
   redirect(`/disciplinas/${row.material.disciplineId}?topicos=${fresh.length}`);
 }
 
@@ -241,6 +243,7 @@ export async function createLearningPath(form: FormData) {
   const existingTopics = await db.select().from(topics).where(owned(topics, userId, and(eq(topics.disciplineId, row.material.disciplineId), eq(topics.materialId, materialId))));
   const normalize = (name: string) => name.toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "").trim();
   const byName = new Map(existingTopics.map((topic) => [normalize(topic.name), topic]));
+  let nextTopicPosition = Math.max(-1, ...existingTopics.map(topic => topic.position)) + 1;
   await db.transaction(async (tx) => {
     // Serialize generation commits per PDF; never delete a learner's existing path.
     await tx.select({ id: materials.id }).from(materials).where(owned(materials, userId, eq(materials.id, materialId))).for("update");
@@ -251,7 +254,7 @@ export async function createLearningPath(form: FormData) {
       for (const [lessonPosition, lesson] of unit.lessons.entries()) {
         let topic = byName.get(normalize(lesson.title));
         if (!topic) {
-          const [createdTopic] = await tx.insert(topics).values(withOwner(userId, { disciplineId: row.material.disciplineId, materialId, name: lesson.title, description: lesson.objective })).returning();
+          const [createdTopic] = await tx.insert(topics).values(withOwner(userId, { disciplineId: row.material.disciplineId, materialId, position: nextTopicPosition++, name: lesson.title, description: lesson.objective })).returning();
           topic = createdTopic;
           byName.set(normalize(lesson.title), topic);
         }

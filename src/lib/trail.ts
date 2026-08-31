@@ -1,5 +1,5 @@
 // Completion is coverage, never a claim of mastery. Reviews do not change ordering.
-type Topic = { id: string; name: string; status: string; materialId: string | null; createdAt: Date };
+type Topic = { id: string; name: string; status: string; materialId: string | null; position: number; createdAt: Date };
 type Material = { id: string; title: string; createdAt: Date };
 type Unit = { id: string; materialId: string | null; title: string; position: number; createdAt: Date };
 type Lesson = { id: string; unitId: string; topicId: string | null; title: string; position: number };
@@ -27,7 +27,7 @@ export function buildTrail(input: { topics: Topic[]; materials: Material[]; unit
       groupFor(unit.materialId).steps.push({ key: `study:${lesson.id}`, lessonId: lesson.id, topicId: lesson.topicId, title: lesson.title, done: finishedLessons.has(lesson.id) || Boolean(soleLesson && finishedTopics.has(lesson.topicId)), reinforce: topic?.status === "REVISAR", href: `/estudar/iniciar?aula=${lesson.id}` });
     }
   }
-  for (const topic of [...input.topics].sort((a, b) => +a.createdAt - +b.createdAt || a.id.localeCompare(b.id))) {
+  for (const topic of [...input.topics].sort((a, b) => a.position - b.position || +a.createdAt - +b.createdAt || a.id.localeCompare(b.id))) {
     if (linkedTopics.has(topic.id)) continue;
     groupFor(topic.materialId).steps.push({ key: `study:${topic.id}`, lessonId: null, topicId: topic.id, title: topic.name, done: finishedTopics.has(topic.id) || topic.status === "DOMINADO", reinforce: topic.status === "REVISAR", href: `/estudar/iniciar?topico=${topic.id}` });
   }
