@@ -1,0 +1,10 @@
+{
+  "appId": "com.rumevo.app",
+  "appName": "Rumevo",
+  "webDir": "www",
+  "server": {
+    "url": "https://projeto-cyberstudy.d7lmap.easypanel.host",
+    "cleartext": false,
+    "androidScheme": "https"
+  }
+}
