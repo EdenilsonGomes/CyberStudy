@@ -6,6 +6,7 @@ import { revalidatePath } from "next/cache";
 import { getUserDb, owned, withOwner } from "@/db/user-db";
 import { difficulties, disciplines, examTopics, exams, learningUnits, lessonAttempts, materials, microLessons, quizAttempts, quizQuestions, quizzes, reviews, studySessions, topics, tutorMessages } from "@/db/schema";
 import { evaluateUnderstanding, generateCourseFromMaterial, generateQuizQuestions, suggestTopicsFromMaterial, tutorReply, type GeneratedQuestion } from "@/lib/ai";
+import { studentMemory, recordScoredActivity } from "@/lib/student-memory";
 import { assertStudyScope, findContext } from "@/lib/data";
 
 const value = (form: FormData, key: string) => String(form.get(key) || "").trim();
@@ -39,8 +40,8 @@ export async function createTopic(form: FormData) {
 export async function updateTopicStatus(form: FormData) {
   const { db, userId } = await getUserDb();
     const id = requireValue(form, "topicId"); const status = requireValue(form, "status");
-  const mastery = status === "DOMINADO" ? 90 : status === "REVISAR" ? 55 : status === "ESTUDANDO" ? 30 : 0;
-  await db.update(topics).set({ status, mastery, updatedAt: new Date() }).where(owned(topics, userId, eq(topics.id, id))); revalidatePath("/disciplinas");
+  if (!["DOMINADO", "REVISAR", "ESTUDANDO", "NAO_ESTUDADO"].includes(status)) throw new Error("Estado inválido");
+  await db.update(topics).set({ status, updatedAt: new Date() }).where(owned(topics, userId, eq(topics.id, id))); revalidatePath("/disciplinas");
 }
 
 export async function deleteTopic(form: FormData) {
@@ -65,7 +66,7 @@ export async function createDifficulty(form: FormData) {
   const [subject] = await db.select({ discipline: disciplines.name, topic: topics.name }).from(topics).innerJoin(disciplines, eq(topics.disciplineId, disciplines.id)).where(owned(topics, userId, eq(topics.id, topicId))).limit(1);
   const context = await findContext(disciplineId, topicId, report);
   let reply: string;
-  try { reply = await tutorReply({ mode, discipline: subject?.discipline || "Disciplina", topic: subject?.topic || "Tópico", report, context }); }
+  try { reply = await tutorReply({ memory: await studentMemory(disciplineId, topicId), mode, discipline: subject?.discipline || "Disciplina", topic: subject?.topic || "Tópico", report, context }); }
   catch { redirect(tutorQuery(difficultyId, false, focus, returnTo, "tutor")); }
   await db.insert(tutorMessages).values(withOwner(userId, { difficultyId, role: "ASSISTANT", mode, content: reply }));
   await db.insert(studySessions).values(withOwner(userId, { disciplineId, topicId, activityType: "DIFICULDADE", result: level, note: report }));
@@ -86,7 +87,7 @@ export async function continueTutor(form: FormData) {
   await db.insert(tutorMessages).values(withOwner(userId, { difficultyId, role: "USER", mode, content: report }));
   const context = await findContext(item.difficulty.disciplineId, item.difficulty.topicId, report);
   let reply: string;
-  try { reply = await tutorReply({ mode, discipline: item.discipline, topic: item.topic, report, context, recentMessages: history.reverse().map(({ role, mode: messageMode, content }) => ({ role, mode: messageMode, content })) }); }
+  try { reply = await tutorReply({ memory: await studentMemory(item.difficulty.disciplineId,item.difficulty.topicId), mode, discipline: item.discipline, topic: item.topic, report, context, recentMessages: history.reverse().map(({ role, mode: messageMode, content }) => ({ role, mode: messageMode, content })) }); }
   catch { redirect(tutorQuery(difficultyId, guided, focus, returnTo, "tutor")); }
   await db.insert(tutorMessages).values(withOwner(userId, { difficultyId, role: "ASSISTANT", mode, content: reply }));
   await db.update(difficulties).set({ lastReport: report, occurrences: sql`${difficulties.occurrences} + 1`, updatedAt: new Date() }).where(owned(difficulties, userId, eq(difficulties.id, difficultyId)));
@@ -108,7 +109,7 @@ export async function retryTutorResponse(form: FormData) {
   const history = recent.filter((message) => message.id !== lastUser.id && message.content.trim()).reverse().slice(-8);
   const context = await findContext(item.difficulty.disciplineId, item.difficulty.topicId, lastUser.content);
   let reply: string;
-  try { reply = await tutorReply({ mode: lastUser.mode || "EXPLICAR", discipline: item.discipline, topic: item.topic, report: lastUser.content, context, recentMessages: history.map(({ role, mode, content }) => ({ role, mode, content })) }); }
+  try { reply = await tutorReply({ memory: await studentMemory(item.difficulty.disciplineId,item.difficulty.topicId), mode: lastUser.mode || "EXPLICAR", discipline: item.discipline, topic: item.topic, report: lastUser.content, context, recentMessages: history.map(({ role, mode, content }) => ({ role, mode, content })) }); }
   catch { redirect(tutorQuery(difficultyId, guided, focus, returnTo, "tutor")); }
   await db.insert(tutorMessages).values(withOwner(userId, { difficultyId, role: "ASSISTANT", mode: lastUser.mode || "EXPLICAR", content: reply }));
   redirect(tutorQuery(difficultyId, guided, focus, returnTo));
@@ -156,6 +157,8 @@ export async function submitQuiz(form: FormData) {
       await db.insert(reviews).values(withOwner(userId, { disciplineId: quiz.disciplineId, topicId: quiz.topicId, scheduledFor: target.toISOString().slice(0, 10) }));
     }
   }
+  if (quiz.topicId) await recordScoredActivity(quiz.disciplineId,quiz.topicId,score,questions.length,questions.length-correct,questions.filter(q=>answers[q.id]!==q.correctAnswer).map(q=>q.explanation).join(" ").slice(0,1200)||null);
+  revalidatePath("/dashboard"); revalidatePath("/semestre");
   redirect(`/estudar?quiz=${quizId}&tentativa=${attempt.id}`);
 }
 
@@ -295,6 +298,8 @@ export async function completeMicroLesson(form: FormData) {
     }
   }
   await db.insert(studySessions).values(withOwner(userId, { disciplineId: lesson.disciplineId, topicId: lesson.topicId, activityType: "ESTUDO", durationMinutes: 8, result: `${score}%`, note: `Microaula: ${lesson.title} · ${correct}/${total} acertos` }));
+  if (lesson.topicId) await recordScoredActivity(lesson.disciplineId,lesson.topicId,score,total,total-correct,lesson.content.checks.filter(q=>normalize(answers[q.id])!==normalize(q.correctAnswer)).map(q=>q.explanation).join(" ").slice(0,1200)||null);
+  revalidatePath("/dashboard"); revalidatePath("/semestre");
   redirect(`/aulas/${lessonId}?tentativa=${attempt.id}`);
 }
 

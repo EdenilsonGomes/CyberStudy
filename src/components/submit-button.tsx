@@ -12,7 +12,7 @@ type Props = ButtonHTMLAttributes<HTMLButtonElement> & {
 
 export function SubmitButton({ children, pendingText, ...props }: Props) {
   const { pending } = useFormStatus();
-  return <button {...props} disabled={pending}>{pending ? pendingText : children}</button>;
+  return <button {...props} disabled={pending || props.disabled}>{pending ? pendingText : children}</button>;
 }
 
 export function ConfirmSubmitButton({ children, pendingText, confirmText = "Excluir este item? Esta ação não pode ser desfeita.", ...props }: Props) {

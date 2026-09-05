@@ -9,7 +9,7 @@ export async function POST(request: Request) {
   const email = String(form.get("email") || "").trim().toLowerCase();
   const password = String(form.get("password") || "");
   const requestedNext = String(form.get("next") || "");
-  const next = requestedNext.startsWith("/") && !requestedNext.startsWith("//") && !requestedNext.includes("\\") ? requestedNext : "/disciplinas";
+  const next = requestedNext.startsWith("/") && !requestedNext.startsWith("//") && !requestedNext.includes("\\") ? requestedNext : "/dashboard";
   const user = await authenticateLocal(email, password);
   if (!user) {
     return redirectTo(request, `/login?error=1&next=${encodeURIComponent(next)}`);

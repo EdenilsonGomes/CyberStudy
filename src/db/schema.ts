@@ -293,3 +293,54 @@ export const examTopics = pgTable("exam_topics", {
   examId: uuid("exam_id").references(() => exams.id, { onDelete: "cascade" }).notNull(),
   topicId: uuid("topic_id").references(() => topics.id, { onDelete: "cascade" }).notNull(),
 }, (table) => [primaryKey({ columns: [table.examId, table.topicId] })]);
+
+export const academicEvents = pgTable("academic_events", {
+  id: uuid("id").defaultRandom().primaryKey(),
+  userId: uuid("user_id").references(() => users.id).notNull(),
+  disciplineId: uuid("discipline_id").references(() => disciplines.id, { onDelete: "cascade" }).notNull(),
+  name: text("name").notNull(), kind: text("kind").notNull(),
+  date: date("date").notNull(), notes: text("notes"),
+  topicIds: jsonb("topic_ids").$type<string[]>().default([]).notNull(),
+  completed: boolean("completed").default(false).notNull(), ...timestamps,
+});
+export const conceptProgress = pgTable("concept_progress", {
+  id: uuid("id").defaultRandom().primaryKey(),
+  userId: uuid("user_id").references(() => users.id).notNull(),
+  disciplineId: uuid("discipline_id").references(() => disciplines.id, { onDelete: "cascade" }).notNull(),
+  topicId: uuid("topic_id").references(() => topics.id, { onDelete: "cascade" }),
+  name: text("name").notNull(), mastery: integer("mastery").default(0).notNull(),
+  samples: integer("samples").default(0).notNull(), errors: integer("errors").default(0).notNull(),
+  lastError: text("last_error"), ...timestamps,
+}, t => [unique().on(t.userId, t.disciplineId, t.name)]);
+export const flashcards = pgTable("flashcards", {
+  id: uuid("id").defaultRandom().primaryKey(), userId: uuid("user_id").references(() => users.id).notNull(),
+  disciplineId: uuid("discipline_id").references(() => disciplines.id, { onDelete: "cascade" }).notNull(),
+  topicId: uuid("topic_id").references(() => topics.id, { onDelete: "cascade" }),
+  sourceKey: text("source_key").notNull(), front: text("front").notNull(), back: text("back").notNull(),
+  schedule: jsonb("schedule").$type<import("ts-fsrs").Card>().notNull(),
+  due: timestamp("due", { withTimezone: true }).defaultNow().notNull(),
+  revision: integer("revision").default(0).notNull(), ...timestamps,
+}, t => [unique().on(t.userId, t.sourceKey)]);
+export const cardReviews = pgTable("card_reviews", {
+  id: uuid("id").defaultRandom().primaryKey(), userId: uuid("user_id").references(() => users.id).notNull(),
+  cardId: uuid("card_id").references(() => flashcards.id, { onDelete: "cascade" }).notNull(),
+  rating: integer("rating").notNull(), log: jsonb("log").notNull(),
+  createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
+});
+export const materialDecisions = pgTable("material_decisions", {
+  userId: uuid("user_id").references(() => users.id).notNull(),
+  materialId: uuid("material_id").references(() => materials.id, { onDelete: "cascade" }).notNull(),
+  decision: text("decision").notNull(), ...timestamps,
+}, t => [primaryKey({ columns: [t.userId, t.materialId] })]);
+export const learningEvidence = pgTable("learning_evidence", {
+  sessionId: uuid("session_id").references(() => interactiveSessions.id, { onDelete: "cascade" }).primaryKey(),
+  userId: uuid("user_id").references(() => users.id).notNull(),
+});
+export type MockQuestion = { id:string; topicId:string|null; concept:string; prompt:string; options:string[]; correctAnswer:string; explanation:string };
+export const mockExams = pgTable("mock_exams", {
+  id:uuid("id").defaultRandom().primaryKey(), userId:uuid("user_id").references(()=>users.id).notNull(),
+  disciplineId:uuid("discipline_id").references(()=>disciplines.id,{onDelete:"cascade"}).notNull(),
+  questions:jsonb("questions").$type<MockQuestion[]>().notNull(), answers:jsonb("answers").$type<Record<string,string>>().default({}).notNull(),
+  score:integer("score"), expiresAt:timestamp("expires_at",{withTimezone:true}).notNull(),
+  completedAt:timestamp("completed_at",{withTimezone:true}), createdAt:timestamp("created_at",{withTimezone:true}).defaultNow().notNull(),
+});

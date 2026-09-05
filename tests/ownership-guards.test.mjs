@@ -11,8 +11,8 @@ test("all learning reads/updates/deletes are owner-scoped and inserts stamp serv
   for (const path of files("src").filter(path => /\.tsx?$/.test(path))) {
     const source = readFileSync(path, "utf8");
     if (!privileged.has(path)) assert.doesNotMatch(source.replace(/^import type .*$/gm, ""), /import.*\bgetDb\b/, `${path}: unrestricted database import`);
-    if (!source.includes('from "@/db/user-db"') && path !== "src/lib/study-session-core.ts") continue;
-    if (path !== "src/lib/study-session-core.ts") assert.match(source, /await getUserDb\(\)/, `${path}: must derive identity from session`);
+    if (!source.includes('from "@/db/user-db"') && !["src/lib/study-session-core.ts", "src/lib/learning-evidence.ts"].includes(path)) continue;
+    if (!["src/lib/study-session-core.ts", "src/lib/learning-evidence.ts"].includes(path)) assert.match(source, /await getUserDb\(\)/, `${path}: must derive identity from session`);
     const sf = ts.createSourceFile(path, source, ts.ScriptTarget.Latest, true);
     function visit(node) {
       if (ts.isCallExpression(node) && ts.isPropertyAccessExpression(node.expression)) {
@@ -25,11 +25,11 @@ test("all learning reads/updates/deletes are owner-scoped and inserts stamp serv
             if (top.expression.name.text === "where") where = top;
           }
           assert.ok(where, `${path}: ${method}(${table}) without owner predicate`);
-          assert.ok(where.arguments[0].getText(sf).startsWith(`owned(${table}, userId`), `${path}: incorrect owner predicate`);
+          assert.ok(where.arguments[0].getText(sf).replace(/\s/g, "").startsWith(`owned(${table},userId`), `${path}: incorrect owner predicate`);
           reads++;
         }
         if (method === "values" && /^(db|tx)\./.test(node.getText(sf))) {
-          assert.ok(node.arguments[0].getText(sf).startsWith("withOwner(userId,"), `${path}: ownerless insert`); writes++;
+          assert.ok(node.arguments[0].getText(sf).replace(/\s/g, "").startsWith("withOwner(userId,"), `${path}: ownerless insert`); writes++;
         }
       }
       ts.forEachChild(node, visit);

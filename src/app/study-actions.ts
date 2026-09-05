@@ -30,6 +30,7 @@ export async function startMaterialStudy(form: FormData) {
   const active = await activeStudy(target.key);
   if (active) redirect(`/estudar/sessao/${active.session.id}`);
   const params = new URLSearchParams(target.diagnostic ? { disciplina: target.disciplineId, diagnostico: "1" } : target.lessonId ? { aula: target.lessonId } : { topico: target.topicId! });
+  if (target.diagnostic && target.topicId) params.set("topico",target.topicId);
   if (value("review") === "1") params.set("revisao", "1");
   const fail = (error: string): never => redirect(`/estudar/iniciar?${params}&erro=${error}`);
   if (!target.sources.length) fail("material");

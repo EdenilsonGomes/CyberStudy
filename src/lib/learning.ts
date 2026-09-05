@@ -10,7 +10,7 @@ export const topicStatusLabel: Record<string, string> = {
   NAO_ESTUDADO: "Ainda não iniciado",
   ESTUDANDO: "Em andamento",
   REVISAR: "Hora de revisar",
-  DOMINADO: "Concluído",
+  DOMINADO: "Dominado",
 };
 
 export function pickNextTopic<T extends LearningTopic>(items: T[], dueTopicIds: string[] = []) {

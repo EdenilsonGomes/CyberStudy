@@ -1,7 +1,7 @@
 import { and, asc, desc, eq, isNotNull, isNull } from "drizzle-orm";
 import { createHash } from "node:crypto";
 import { getUserDb, owned } from "@/db/user-db";
-import { disciplines, interactiveSessions, learningUnits, materialChunks, materials, microLessons, studyPackages, topics } from "@/db/schema";
+import { conceptProgress, disciplines, interactiveSessions, learningUnits, materialChunks, materials, microLessons, studyPackages, topics } from "@/db/schema";
 import { adaptStudyLesson, diagnosticLevels, uuidPattern, type StudySource } from "@/lib/study-contract";
 
 export type StudyTarget = { disciplineId: string; topicId: string | null; lessonId: string | null; title: string; concept: string; diagnostic: boolean; key: string; sources: StudySource[]; cacheKey: string };
@@ -19,9 +19,9 @@ export async function resolveStudyTarget(input: { topicId?: string; lessonId?: s
   const [discipline] = await db.select().from(disciplines).where(owned(disciplines, userId, eq(disciplines.id, disciplineId))).limit(1);
   if (!discipline) return null;
   const diagnostic = Boolean(input.diagnostic);
-  const scope = diagnostic ? await db.select().from(topics).where(owned(topics, userId, eq(topics.disciplineId, disciplineId))).orderBy(asc(topics.createdAt)).limit(3) : [{ id: topic?.id || "", name: topic?.name || lesson?.title || discipline.name }];
+  const scope = diagnostic && !topic ? await db.select().from(topics).where(owned(topics, userId, eq(topics.disciplineId, disciplineId))).orderBy(asc(topics.position)).limit(3) : [{ id: topic?.id || "", name: topic?.name || lesson?.title || discipline.name }];
   const [unit] = lesson ? await db.select().from(learningUnits).where(owned(learningUnits, userId, eq(learningUnits.id, lesson.unitId))).limit(1) : [];
-  const materialId = unit?.materialId || (!diagnostic ? topic?.materialId : null);
+  const materialId = unit?.materialId || topic?.materialId;
   const chunks = await db.select({ id: materialChunks.id, topicId: materialChunks.topicId, title: materials.title, content: materialChunks.content }).from(materialChunks).innerJoin(materials, eq(materialChunks.materialId, materials.id)).where(owned(materialChunks, userId, and(eq(materialChunks.disciplineId, disciplineId), materialId ? eq(materialChunks.materialId, materialId) : undefined))).orderBy(asc(materialChunks.position)).limit(120);
   const sources: StudySource[] = [];
   for (const concept of scope) {
@@ -32,10 +32,10 @@ export async function resolveStudyTarget(input: { topicId?: string; lessonId?: s
     if (content.length >= 80) sources.push({ id: concept.id || lesson?.id || disciplineId, title: ranked[0].title, concept: concept.name, content });
     else if (lesson) sources.push({ id: lesson.id, title: `Microaula existente: ${lesson.title}`, concept: concept.name, content: `${lesson.content.explanation}\n${lesson.content.example}\n${lesson.content.checks.map((check) => check.explanation).join("\n")}` });
   }
-  const key = diagnostic ? `diagnostic:${disciplineId}` : `study:${lesson?.id || topic?.id}`;
+  const key = diagnostic ? `diagnostic:${disciplineId}${topic ? `:${topic.id}` : ""}` : `study:${lesson?.id || topic?.id}`;
   if (!diagnostic && !lesson && !topic) return null;
   const cacheKey = createHash("sha256").update(JSON.stringify({ version: 1, key, sources })).digest("hex");
-  return { disciplineId, topicId: diagnostic ? null : topic?.id || null, lessonId: diagnostic ? null : lesson?.id || null, title: diagnostic ? `Seu ponto de partida · ${discipline.name}` : lesson?.title || topic!.name, concept: topic?.name || lesson?.title || "", diagnostic, key, sources, cacheKey };
+  return { disciplineId, topicId: topic?.id || null, lessonId: diagnostic ? null : lesson?.id || null, title: diagnostic ? `Seu ponto de partida · ${topic?.name || discipline.name}` : lesson?.title || topic!.name, concept: topic?.name || lesson?.title || "", diagnostic, key, sources, cacheKey };
 }
 
 export async function activeStudy(key?: string) {
@@ -51,6 +51,9 @@ export async function latestDiagnostic(disciplineId: string) {
 }
 
 export async function levelFor(target: StudyTarget) {
+  const {db,userId}=await getUserDb();
+  const [evidence]=await db.select().from(conceptProgress).where(owned(conceptProgress,userId,and(eq(conceptProgress.disciplineId,target.disciplineId),eq(conceptProgress.name,target.concept)))).limit(1);
+  if(evidence) return evidence.mastery >= 80 && evidence.samples >= 2 ? "application" : "base";
   const diagnostic = await latestDiagnostic(target.disciplineId);
   return diagnostic?.package.content ? diagnosticLevels(diagnostic.package.content, diagnostic.session.state)[target.concept] || "base" : "base";
 }

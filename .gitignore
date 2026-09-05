@@ -12,6 +12,8 @@
 
 # testing
 /coverage
+/*-results.log
+/accounts-test.log
 
 # next.js
 /.next/

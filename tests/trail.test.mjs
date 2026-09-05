@@ -111,7 +111,7 @@ test("entry points share progress and repeat requires an explicit review intent"
     const source = readFileSync(file, "utf8"); assert.match(source, /loadTrail/); assert.match(source, /trailStepFor/); assert.match(source, /revisao|review/);
   }
   assert.doesNotMatch(readFileSync("src/lib/trail-data.ts", "utf8"), /limit\(100\)|pickNextTopic/);
-  assert.match(readFileSync("src/app/(app)/dashboard/page.tsx", "utf8"), /redirect\("\/disciplinas"\)/);
+  assert.match(readFileSync("src/app/(app)/dashboard/page.tsx", "utf8"), /buildDailyPlan/);
   assert.doesNotMatch(readFileSync("src/app/actions.ts", "utf8").split("export async function createLearningPath")[1].split("export async function completeMicroLesson")[0], /delete\(learningUnits\)/);
 });
 
@@ -139,6 +139,9 @@ test("actual study transaction saves last answer once, rejects duplicate command
   state = (await send(state, "next")).state; assert.equal(state.completed, true);
   assert.equal((await db.select().from(schema.studySessions)).length, 1);
   assert.equal((await db.select().from(schema.reviews)).length, 1);
-  assert.equal((await db.select().from(schema.topics))[0].mastery, 0);
+  assert.equal((await db.select().from(schema.topics))[0].mastery, 100);
+  assert.ok((await db.select().from(schema.conceptProgress)).length > 0);
+  assert.ok((await db.select().from(schema.flashcards)).length > 0);
+  assert.equal((await db.select().from(schema.learningEvidence)).length, 1);
   await assert.rejects(applyStudyCommand(db, "11111111-1111-4111-8111-111111111111", session.id, { type: "next", revision: state.revision, seconds: 1 }), /SESSION_NOT_FOUND/);
 });

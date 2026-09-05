@@ -2,10 +2,11 @@
 import { and, eq, lte } from "drizzle-orm";
 import type { getDb } from "../db/index";
 import { owned, withOwner } from "../db/ownership.ts";
-import { interactiveSessions, reviews, studyPackages, studySessions, topics } from "../db/schema.ts";
+import { interactiveSessions, reviews, studyPackages, studySessions } from "../db/schema.ts";
 import { adaptStudyLesson } from "./study-contract.ts";
 import { feedbackFor, hintFor, summarizeLesson, transition, type LessonCommand } from "./interactive-lesson.ts";
 import { studyCoverageComplete } from "./trail.ts";
+import { recordLearningEvidence } from "./learning-evidence.ts";
 
 export async function applyStudyCommand(db: ReturnType<typeof getDb>, userId: string, sessionId: string, command: LessonCommand) {
   return db.transaction(async (tx) => {
@@ -18,11 +19,11 @@ export async function applyStudyCommand(db: ReturnType<typeof getDb>, userId: st
       if (next !== row.state) {
         const finished = studyCoverageComplete(lesson, next);
         await tx.update(interactiveSessions).set({ state: next, updatedAt: new Date(), completedAt: row.completedAt || (finished ? new Date() : null), activeKey: row.completedAt || finished ? null : row.activeKey }).where(owned(interactiveSessions, userId, eq(interactiveSessions.id, sessionId)));
+        if (finished && !row.completedAt) await recordLearningEvidence(tx, userId, sessionId, pack.disciplineId, pack.topicId, lesson, next);
         if (finished && !row.completedAt && pack.kind === "study") {
           const summary = summarizeLesson(lesson, next);
           await tx.insert(studySessions).values(withOwner(userId, { id: sessionId, disciplineId: pack.disciplineId, topicId: pack.topicId, activityType: "AULA_INTERATIVA", durationMinutes: Math.round(next.elapsedSeconds / 60), result: `${summary.independent}/${summary.total} sem ajuda · ${summary.assisted} com apoio`, note: `${lesson.title}. Reforçar: ${summary.reinforce.join(", ") || "verificar retenção outro dia"}.` })).onConflictDoNothing();
           if (pack.topicId) {
-            await tx.update(topics).set({ status: summary.reinforce.length ? "REVISAR" : "ESTUDANDO", updatedAt: new Date() }).where(owned(topics, userId, eq(topics.id, pack.topicId)));
             const today = new Date().toISOString().slice(0, 10);
             await tx.update(reviews).set({ status: "CONCLUIDA", completedAt: new Date() }).where(owned(reviews, userId, and(eq(reviews.topicId, pack.topicId), eq(reviews.status, "PENDENTE"), lte(reviews.scheduledFor, today))));
             const date = new Date(); date.setUTCDate(date.getUTCDate() + (summary.reinforce.length ? 1 : 3));
