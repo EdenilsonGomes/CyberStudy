@@ -1,0 +1,70 @@
+name: Build Rumevo APK
+
+on:
+  workflow_dispatch:
+  push:
+    branches:
+      - main
+    paths:
+      - "mobile/**"
+      - ".github/workflows/rumevo-apk.yml"
+
+jobs:
+  build-apk:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+
+      - name: Setup Java
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "21"
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install mobile dependencies
+        working-directory: mobile
+        run: npm install
+
+      - name: Create Android project
+        working-directory: mobile
+        run: npx cap add android
+
+      - name: Apply Rumevo branding and Android behavior
+        working-directory: mobile
+        run: |
+          python -m pip install --quiet pillow
+          python scripts/prepare_android.py
+
+      - name: Build debug APK
+        working-directory: mobile/android
+        run: |
+          chmod +x gradlew
+          ./gradlew assembleDebug
+
+      - name: Prepare APK artifact
+        run: |
+          cp mobile/android/app/build/outputs/apk/debug/app-debug.apk Rumevo-piloto.apk
+          sha256sum Rumevo-piloto.apk > Rumevo-piloto.sha256.txt
+
+      - name: Upload APK
+        uses: actions/upload-artifact@v4
+        with:
+          name: Rumevo-piloto-Android
+          path: |
+            Rumevo-piloto.apk
+            Rumevo-piloto.sha256.txt
+          if-no-files-found: error
+          retention-days: 30
