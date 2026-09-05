@@ -183,9 +183,9 @@ function cleanCourse(value: unknown): GeneratedUnit[] {
   if (!value || typeof value !== "object" || !("units" in value) || !Array.isArray(value.units)) return [];
   const validTypes = new Set(["MULTIPLE_CHOICE", "TRUE_FALSE", "FILL_BLANK", "ORDER"]);
   const validCardTypes = new Set<LessonCardType>(["CONCEPT", "ANALOGY", "COMPARISON", "STEPS", "SCENARIO"]);
-  return value.units.slice(0, 4).flatMap((rawUnit: unknown) => {
+  return value.units.slice(0, 1).flatMap((rawUnit: unknown) => {
     if (!rawUnit || typeof rawUnit !== "object" || !("title" in rawUnit) || typeof rawUnit.title !== "string" || !("lessons" in rawUnit) || !Array.isArray(rawUnit.lessons)) return [];
-    const lessons = rawUnit.lessons.slice(0, 4).flatMap((rawLesson: unknown) => {
+    const lessons = rawUnit.lessons.slice(0, 5).flatMap((rawLesson: unknown) => {
       if (!rawLesson || typeof rawLesson !== "object") return [];
       const lesson = rawLesson as Record<string, unknown>;
       if (typeof lesson.title !== "string" || typeof lesson.objective !== "string" || typeof lesson.explanation !== "string" || typeof lesson.example !== "string" || !Array.isArray(lesson.checks)) return [];
@@ -234,13 +234,13 @@ export async function generateCourseFromMaterial(input: { discipline: string; ti
   const normalized = input.content.replace(/\s+/g, " ");
   const middle = Math.floor(normalized.length / 2);
   const sample = [normalized.slice(0, 7000), normalized.slice(Math.max(0, middle - 2500), middle + 2500), normalized.slice(-4000)].join("\n---\n");
-  const system = `Você é um designer instrucional. Transforme material acadêmico em uma trilha curta para iniciante e retorne somente JSON válido. Não invente conteúdo. Ordene pré-requisitos antes de aplicações. Cada microaula deve ensinar um único conceito, em português simples, e durar poucos minutos. Gere entre 2 e 4 unidades, com 2 a 4 microaulas por unidade. Cada microaula deve ter explicação curta, exemplo, entre 3 e 5 cards visuais e 2 a 4 verificações. Os cards são universais para qualquer curso: CONCEPT apresenta uma ideia; ANALOGY usa uma comparação concreta; COMPARISON contrasta itens; STEPS ensina uma sequência; SCENARIO aplica o conceito. Use textos curtos, emoji pertinente à disciplina e items apenas quando ajudarem. Distribua os tipos de questão MULTIPLE_CHOICE, TRUE_FALSE, FILL_BLANK e ORDER. Para ORDER, ofereça sequências completas como opções. Para FILL_BLANK, options deve ser []. Para os demais, correctAnswer deve ser idêntica a uma opção.`;
-  const prompt = `Disciplina: ${input.discipline}\nMaterial: ${input.title}\nTrechos do material:\n${sample}\n\nFormato obrigatório: {"units":[{"title":"...","description":"...","lessons":[{"title":"...","objective":"...","explanation":"...","example":"...","cards":[{"type":"CONCEPT|ANALOGY|COMPARISON|STEPS|SCENARIO","title":"...","eyebrow":"...","body":"...","emoji":"...","items":[{"label":"...","description":"...","emoji":"..."}]}],"checks":[{"type":"MULTIPLE_CHOICE","prompt":"...","options":["..."],"correctAnswer":"...","explanation":"..."}]}]}]}`;
+  const system = `Você é um designer instrucional. Transforme UM material acadêmico em UMA unidade curta para iniciante e retorne somente JSON válido. Não invente conteúdo. Ordene pré-requisitos antes de aplicações. Gere EXATAMENTE 1 unidade com EXATAMENTE 5 microaulas. As aulas 1 a 4 devem ensinar os quatro blocos conceituais mais importantes do material em ordem pedagógica. A aula 5 deve ser "Encerramento da unidade": revisar e conectar os conceitos das quatro aulas anteriores, sem introduzir assunto novo. Cada microaula deve durar poucos minutos, ter explicação curta, exemplo, entre 3 e 5 cards visuais e 2 a 4 verificações. Os cards são universais para qualquer curso: CONCEPT apresenta uma ideia; ANALOGY usa uma comparação concreta; COMPARISON contrasta itens; STEPS ensina uma sequência; SCENARIO aplica o conceito. Use textos curtos, emoji pertinente à disciplina e items apenas quando ajudarem. Distribua os tipos de questão MULTIPLE_CHOICE, TRUE_FALSE, FILL_BLANK e ORDER. Para ORDER, ofereça sequências completas como opções. Para FILL_BLANK, options deve ser []. Para os demais, correctAnswer deve ser idêntica a uma opção.`;
+  const prompt = `Disciplina: ${input.discipline}\nUnidade/material: ${input.title}\nTrechos do material:\n${sample}\n\nFormato obrigatório: {"units":[{"title":"...","description":"...","lessons":[{"title":"...","objective":"...","explanation":"...","example":"...","cards":[{"type":"CONCEPT|ANALOGY|COMPARISON|STEPS|SCENARIO","title":"...","eyebrow":"...","body":"...","emoji":"...","items":[{"label":"...","description":"...","emoji":"..."}]}],"checks":[{"type":"MULTIPLE_CHOICE","prompt":"...","options":["..."],"correctAnswer":"...","explanation":"..."}]}]}]}. A quinta lesson deve ser o encerramento da unidade.`;
   try {
     const raw = process.env.MISTRAL_API_KEY ? await callMistralForTopics(system, prompt, 5000) : await callAI(system, prompt, 5000);
     const parsed = JSON.parse(raw.replace(/^```json\s*/i, "").replace(/```$/i, "").trim()) as unknown;
     const units = cleanCourse(parsed);
-    if (!units.length || units.reduce((total, unit) => total + unit.lessons.length, 0) < 3) throw new Error("INVALID_COURSE");
+    if (units.length !== 1 || units[0].lessons.length !== 5) throw new Error("INVALID_COURSE");
     return units;
   } catch {
     throw new Error("COURSE_GENERATION_FAILED");
