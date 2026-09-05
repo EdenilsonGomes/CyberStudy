@@ -1,5 +1,6 @@
 from pathlib import Path
 from PIL import Image, ImageDraw
+import math
 
 ROOT = Path(__file__).resolve().parents[1]
 ANDROID = ROOT / "android"
@@ -16,7 +17,6 @@ BLACK = "#071427"
 def star_points(cx, cy, r1, r2):
     pts = []
     for i in range(8):
-        import math
         a = math.radians(-90 + i * 45)
         r = r1 if i % 2 == 0 else r2
         pts.append((cx + math.cos(a) * r, cy + math.sin(a) * r))
@@ -28,7 +28,7 @@ def make_icon(size=1024):
     im = Image.new("RGB", (s, s), DARK)
     d = ImageDraw.Draw(im)
 
-    # Rumevo pilot mascot mark: faithful to the approved palette and icon composition.
+    # Pilot launcher mark based on the approved Rumevo palette and icon composition.
     d.ellipse((int(.18*s), int(.30*s), int(.82*s), int(.98*s)), fill=BLUE)
     d.ellipse((int(.10*s), int(.22*s), int(.54*s), int(.48*s)), fill=LIGHT_BLUE)
     d.ellipse((int(.27*s), int(.40*s), int(.75*s), int(.69*s)), fill=WHITE)
@@ -75,8 +75,8 @@ def save_splash():
 def patch_back_button():
     java_file = ANDROID / "app" / "src" / "main" / "java" / "com" / "rumevo" / "app" / "MainActivity.java"
     java_file.parent.mkdir(parents=True, exist_ok=True)
-    java_file.write_text(
-        """package com.rumevo.app;\n\n"
+    java = (
+        "package com.rumevo.app;\n\n"
         "import android.webkit.WebView;\n"
         "import com.getcapacitor.BridgeActivity;\n\n"
         "public class MainActivity extends BridgeActivity {\n"
@@ -89,23 +89,23 @@ def patch_back_button():
         "            super.onBackPressed();\n"
         "        }\n"
         "    }\n"
-        "}\n""",
-        encoding="utf-8",
+        "}\n"
     )
+    java_file.write_text(java, encoding="utf-8")
 
 
 def patch_colors():
     colors = RES / "values" / "colors.xml"
     colors.parent.mkdir(parents=True, exist_ok=True)
-    colors.write_text(
-        """<?xml version=\"1.0\" encoding=\"utf-8\"?>\n"
+    xml = (
+        "<?xml version=\"1.0\" encoding=\"utf-8\"?>\n"
         "<resources>\n"
         "    <color name=\"colorPrimary\">#0B1F3B</color>\n"
         "    <color name=\"colorPrimaryDark\">#0B1F3B</color>\n"
         "    <color name=\"colorAccent\">#F4B400</color>\n"
-        "</resources>\n""",
-        encoding="utf-8",
+        "</resources>\n"
     )
+    colors.write_text(xml, encoding="utf-8")
 
 
 if __name__ == "__main__":
