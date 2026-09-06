@@ -5,7 +5,7 @@ export const metadata = { referrer: "no-referrer" as const };
 export default async function AccessPage({ searchParams }: { searchParams: Promise<{ token?: string; erro?: string }> }) {
   const { token = "", erro } = await searchParams;
   return <main className="grid min-h-dvh place-items-center p-4"><section className="card w-full max-w-md space-y-5 p-5 sm:p-8">
-    <p className="eyebrow">CyberStudy · acesso pessoal</p><h1 className="page-title">Seu espaço para aprender</h1>
+    <p className="eyebrow">Rumevo · acesso pessoal</p><h1 className="page-title">Seu espaço para aprender</h1>
     {!/^[\w-]{43}$/.test(token) ? <p>Peça um convite ao administrador para criar sua conta. Se esqueceu a senha, peça um link de recuperação. Ainda não enviamos e-mails automáticos.</p> : <>
       <p className="muted text-sm">Use seu convite ou link de recuperação para definir uma senha. Seu progresso fica separado das outras contas.</p>
       {erro && <p role="alert" className="rounded-xl border border-red-400 p-3 text-sm">Confira o nome e as senhas. O link também pode estar usado ou expirado; nesse caso, peça outro ao administrador.</p>}
