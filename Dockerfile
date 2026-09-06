@@ -19,6 +19,7 @@ ENV HOSTNAME=0.0.0.0
 RUN groupadd --system --gid 1001 nodejs && useradd --system --uid 1001 --gid nodejs nextjs
 COPY --from=builder --chown=nextjs:nodejs /app/.next/standalone ./
 COPY --from=builder --chown=nextjs:nodejs /app/.next/static ./.next/static
+COPY --from=builder --chown=nextjs:nodejs /app/public ./public
 COPY --from=deps --chown=nextjs:nodejs /app/node_modules/.pnpm/postgres@3.4.9/node_modules/postgres ./node_modules/postgres
 COPY --from=deps --chown=nextjs:nodejs /app/node_modules/.pnpm/@napi-rs+canvas@0.1.80/node_modules/@napi-rs/canvas ./node_modules/@napi-rs/canvas
 COPY --from=deps --chown=nextjs:nodejs /app/node_modules/.pnpm/@napi-rs+canvas-linux-x64-gnu@0.1.80/node_modules/@napi-rs/canvas-linux-x64-gnu ./node_modules/@napi-rs/canvas-linux-x64-gnu
