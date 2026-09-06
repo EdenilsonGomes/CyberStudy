@@ -135,6 +135,20 @@ function cleanSuggestedTopics(value: unknown): SuggestedTopic[] {
   }).slice(0, 10);
 }
 
+class MistralApiError extends Error {
+  status: number;
+  providerType?: string;
+  providerCode?: string;
+
+  constructor(status: number, body: { message?: string; type?: string; code?: string }) {
+    super(body.message || `Mistral respondeu ${status}`);
+    this.name = "MistralApiError";
+    this.status = status;
+    this.providerType = body.type;
+    this.providerCode = body.code;
+  }
+}
+
 async function callMistralForTopics(system: string, prompt: string, maxTokens = 1200, timeoutMs = maxTokens > 1200 ? 60_000 : 30_000, schema?: Record<string, unknown>, textMode = false) {
   const controller = new AbortController();
   const timeout = setTimeout(() => controller.abort(), timeoutMs);
@@ -151,7 +165,22 @@ async function callMistralForTopics(system: string, prompt: string, maxTokens = 
       }),
       signal: controller.signal,
     });
-    if (!response.ok) throw new Error(`Mistral respondeu ${response.status}`);
+    if (!response.ok) {
+      let errorBody: { message?: string; type?: string; code?: string } = {};
+      try {
+        errorBody = await response.json() as typeof errorBody;
+      } catch {
+        // Keep the HTTP status when the provider returns a non-JSON error.
+      }
+      console.error("Erro da API Mistral", {
+        status: response.status,
+        type: errorBody.type,
+        code: errorBody.code,
+        message: errorBody.message,
+        retryAfter: response.headers.get("retry-after"),
+      });
+      throw new MistralApiError(response.status, errorBody);
+    }
     const body = await response.json() as { choices?: Array<{ finish_reason?: string; message?: { content?: string } }> };
     if (schema && body.choices?.[0]?.finish_reason === "length") throw new Error("AI_INCOMPLETE");
     const content = body.choices?.[0]?.message?.content;
