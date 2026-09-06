@@ -8,6 +8,7 @@ on:
     paths:
       - "src/**"
       - "public/**"
+      - "Dockerfile"
       - "package.json"
       - "pnpm-lock.yaml"
       - ".github/workflows/web-ci.yml"
