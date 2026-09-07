@@ -5,9 +5,13 @@ import { getDb } from "@/db";
 import { users } from "@/db/schema";
 import { requireAdmin } from "@/lib/auth";
 import { issueAccountToken } from "@/lib/accounts";
+import { supabaseAuthConfigured } from "@/lib/supabase-auth";
 
 export async function createAccountLink(_previous: { path?: string; error?: string }, form: FormData): Promise<{ path?: string; error?: string }> {
   const admin = await requireAdmin();
+  if (supabaseAuthConfigured()) {
+    return { error: "Supabase Auth está ativo. Crie ou recupere a conta em Authentication > Users no Supabase." };
+  }
   try {
     const token = await issueAccountToken(admin.id, String(form.get("email") || ""), form.get("kind") === "reset" ? "reset" : "invite", form.get("isTest") === "on");
     revalidatePath("/perfil/contas");

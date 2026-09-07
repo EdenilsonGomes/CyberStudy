@@ -1,8 +1,19 @@
 import Link from "next/link";
+import { supabaseAuthConfigured } from "@/lib/supabase-auth";
 export const dynamic = "force-dynamic";
 export const metadata = { referrer: "no-referrer" as const };
 
 export default async function AccessPage({ searchParams }: { searchParams: Promise<{ token?: string; erro?: string }> }) {
+  const usesSupabase = supabaseAuthConfigured();
+  if (usesSupabase) {
+    return <main className="grid min-h-dvh place-items-center p-4"><section className="card w-full max-w-md space-y-5 p-5 sm:p-8">
+      <p className="eyebrow">Rumevo · acesso pessoal</p><h1 className="page-title">Acesso pelo Supabase</h1>
+      <p className="muted text-sm">O login do Rumevo agora usa Supabase Auth. Nesta primeira etapa, convites e recuperação de senha são feitos pelo administrador em Authentication → Users no Supabase.</p>
+      <p className="muted text-sm">Depois que a conta existir no Supabase com o mesmo e-mail do seu perfil Rumevo, basta entrar normalmente. Seu progresso continua no banco atual.</p>
+      <Link href="/login" className="btn btn-primary w-full">Voltar ao login</Link>
+    </section></main>;
+  }
+
   const { token = "", erro } = await searchParams;
   return <main className="grid min-h-dvh place-items-center p-4"><section className="card w-full max-w-md space-y-5 p-5 sm:p-8">
     <p className="eyebrow">Rumevo · acesso pessoal</p><h1 className="page-title">Seu espaço para aprender</h1>

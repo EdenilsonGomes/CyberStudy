@@ -1,5 +1,6 @@
 import { createSession, SESSION_COOKIE, sessionCookieOptions } from "@/lib/auth";
-import { authenticateLocal, allowAuthAttempt } from "@/lib/accounts";
+import { authenticateLocal, allowAuthAttempt, ensureLegacyAccount } from "@/lib/accounts";
+import { authenticateSupabase, supabaseAuthConfigured } from "@/lib/supabase-auth";
 import { redirectTo, sameOrigin } from "@/lib/http";
 
 export async function POST(request: Request) {
@@ -10,7 +11,19 @@ export async function POST(request: Request) {
   const password = String(form.get("password") || "");
   const requestedNext = String(form.get("next") || "");
   const next = requestedNext.startsWith("/") && !requestedNext.startsWith("//") && !requestedNext.includes("\\") ? requestedNext : "/dashboard";
-  const user = await authenticateLocal(email, password);
+
+  let user = null;
+  if (supabaseAuthConfigured()) {
+    if (!await allowAuthAttempt("login", email)) {
+      return redirectTo(request, `/login?error=1&next=${encodeURIComponent(next)}`);
+    }
+    const adminEmail = String(process.env.ADMIN_EMAIL || "").trim().toLowerCase();
+    if (adminEmail && email === adminEmail) await ensureLegacyAccount();
+    user = await authenticateSupabase(email, password);
+  } else {
+    user = await authenticateLocal(email, password);
+  }
+
   if (!user) {
     return redirectTo(request, `/login?error=1&next=${encodeURIComponent(next)}`);
   }
